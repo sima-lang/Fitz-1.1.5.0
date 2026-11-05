@@ -1,5 +1,5 @@
 """
-build.py — Сборка Фитца 1.1.5.0 в .exe (Windows) / .bin (Linux).
+build.py — Сборка Фитца (версия в core/version.py) в .exe (Windows) / .bin (Linux).
 Запуск: python build.py
 """
 import os
@@ -7,10 +7,13 @@ import sys
 import subprocess
 import shutil
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from core.version import __version__
+
 
 def build():
     print("=" * 60)
-    print("🛡️  СБОРКА ФИТЦА 1.1.5.0")
+    print(f"🛡️  СБОРКА ФИТЦА {__version__}")
     print("=" * 60)
 
     # Очистка
@@ -47,7 +50,7 @@ def build():
     for h in hidden:
         cmd.extend(["--hidden-import", h])
 
-    cmd.append("ui.py")  # точка входа — GUI
+    cmd.append("ui_pyqt.py")  # точка входа — GUI (PyQt6)
 
     print("⏳ Сборка... (2–5 минут)")
     result = subprocess.run(cmd)

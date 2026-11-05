@@ -2,6 +2,7 @@
 set -e
 
 APP_NAME="fitz14"
+APP_VERSION="$(python3 -c 'import sys; sys.path.insert(0,"."); from core.version import __version__; print(__version__)')"
 APP_DIR="/opt/$APP_NAME"
 BUILD_DIR="build_deb"
 
@@ -23,14 +24,14 @@ cat > "$BUILD_DIR$APP_DIR/run_fitz.sh" << 'INNER_EOF'
 #!/bin/bash
 cd /opt/fitz14
 source venv/bin/activate
-exec python3 ui.py
+exec python3 ui_pyqt.py
 INNER_EOF
 chmod +x "$BUILD_DIR$APP_DIR/run_fitz.sh"
 
 echo "📝 Создание control файла..."
-cat > "$BUILD_DIR/DEBIAN/control" << 'INNER_EOF'
+cat > "$BUILD_DIR/DEBIAN/control" << INNER_EOF
 Package: fitz-guardian
-Version: 1.4.0
+Version: $APP_VERSION
 Architecture: all
 Maintainer: Ishira <ishira@example.com>
 Depends: python3 (>= 3.8), python3-tk, python3-venv, espeak-ng, tesseract-ocr, tesseract-ocr-rus, xdotool, wmctrl
@@ -39,11 +40,11 @@ Description: Fitz Guardian - Digital Companion
 INNER_EOF
 
 echo "🖥️ Создание ярлыка..."
-cat > "$BUILD_DIR/usr/share/applications/fitz14.desktop" << 'INNER_EOF'
+cat > "$BUILD_DIR/usr/share/applications/fitz14.desktop" << INNER_EOF
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Фитц 1.1.5.0
+Name=Фитц $APP_VERSION
 Comment=Digital Companion
 Exec=/opt/fitz14/run_fitz.sh
 Icon=/usr/share/icons/hicolor/256x256/apps/fitz14.png
@@ -52,6 +53,6 @@ Categories=Utility;
 INNER_EOF
 
 echo "🔨 Сборка .deb..."
-dpkg-deb --build "$BUILD_DIR" "fitz-guardian_1.4.0_all.deb"
+dpkg-deb --build "$BUILD_DIR" "fitz-guardian_${APP_VERSION}_all.deb"
 
-echo "✅ Готово! Файл: fitz-guardian_1.4.0_all.deb"
+echo "✅ Готово! Файл: fitz-guardian_${APP_VERSION}_all.deb"
