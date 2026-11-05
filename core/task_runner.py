@@ -19,10 +19,23 @@ ALLOWED_TOOLS = {
     "search_web": lambda arg: agent_tools.search_web_saved(arg),
     "read_youtube": lambda arg: agent_tools.read_youtube_transcript(arg),
     "write_plan": lambda arg: agent_tools.write_plan(arg, title="plan"),
+    "read_file": lambda arg: agent_tools.read_file_safe(arg),
+    "open_app": lambda arg: agent_tools.open_app_safe(arg),
 }
 
 # Эмуляция ввода. Работает ТОЛЬКО при emulation_enabled=True и через подтверждение «да».
 EMULATION_TOOLS = ("click_at", "type_text", "press_key")
+
+# Описание инструментов для модели. Должно совпадать с ALLOWED_TOOLS и EMULATION_TOOLS.
+TOOLS_PROMPT = (
+    "Доступные инструменты:\n"
+    "- search_web: поиск в интернете, arg = запрос\n"
+    "- read_file: прочитать файл проекта, arg = путь внутри проекта\n"
+    "- open_app: открыть приложение из списка (steam, firefox, терминал, код и др.), arg = имя\n"
+    "- write_plan: сохранить план в файл, arg = текст плана\n"
+    "- type_text: напечатать текст (только если пользователь разрешил эмуляцию), arg = текст\n"
+    "- click_at: клик по экрану (только если эмуляция разрешена), arg = \"x,y\"\n"
+)
 
 MAX_STEPS = 8
 
@@ -61,8 +74,8 @@ def parse_goal(goal: str, api=None) -> list:
     if api is not None and getattr(api, "enabled", False):
         prompt = (
             "Разбей задачу на шаги. Ответь ТОЛЬКО JSON-массивом вида "
-            '[{"tool": "search_web|read_youtube|write_plan", "arg": "..."}]. '
-            "Максимум 8 шагов. Задача: " + goal
+            '[{"tool": "<имя инструмента>", "arg": "<аргумент>"}]. '
+            "Максимум 8 шагов.\n\n" + TOOLS_PROMPT + "\nЗадача: " + goal
         )
         try:
             answer = api.ask(prompt, max_tokens=600, temperature=0.2)

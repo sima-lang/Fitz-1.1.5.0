@@ -162,3 +162,42 @@ def emulate(action: str, arg: str) -> dict:
     except ValueError:
         return {"ok": False, "error": "неверные координаты (нужно «x,y»)"}
     return {"ok": not str(res).startswith("⚠️"), "result": str(res)}
+
+
+# ----------------------------------------------------------------------
+# 5. Чтение файла агентом: только проект и data/
+# ----------------------------------------------------------------------
+READABLE_ROOTS = (PROJECT_ROOT,)
+
+
+def read_file_safe(path: str) -> dict:
+    """Чтение файла, но только внутри проекта. Симлинки и выход за пределы отклоняются."""
+    if not path or not path.strip():
+        return {"ok": False, "error": "пустой путь"}
+    try:
+        target = (PROJECT_ROOT / path.strip()).resolve() if not Path(path).is_absolute() \
+            else Path(path).resolve()
+    except (OSError, RuntimeError):
+        return {"ok": False, "error": "неверный путь"}
+    if not any(target == r or r in target.parents for r in (p.resolve() for p in READABLE_ROOTS)):
+        return {"ok": False, "error": "путь вне проекта"}
+    if not target.is_file():
+        return {"ok": False, "error": "файл не найден"}
+    text = target.read_text(encoding="utf-8", errors="replace")
+    return {"ok": True, "file": str(target), "text": text[:20000]}
+
+
+# ----------------------------------------------------------------------
+# 6. Запуск приложения агентом: белый список + правило автономности
+# ----------------------------------------------------------------------
+def open_app_safe(name: str) -> dict:
+    """
+    Запуск приложения. Вне автономного режима агент сюда не попадает —
+    подтверждение обеспечивает commands/apps.py. Здесь проверяется белый список.
+    """
+    from core import autonomy
+    if not autonomy.is_allowed_app(name):
+        return {"ok": False, "error": f"«{name}» не в списке разрешённых приложений"}
+    from core import tools
+    res = str(tools.open_app(name))
+    return {"ok": not res.startswith("⚠️"), "result": res}

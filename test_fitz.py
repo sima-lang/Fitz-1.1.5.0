@@ -19,6 +19,38 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # ======================================================================
 # ТЕСТЫ: commands/files.py
 # ======================================================================
+class IsolatedAutonomy:
+    """Миксин: подменяет пути автономности и логгеры на временные/тихие, чтобы тесты не писали в боевые data/."""
+
+    def _isolate_autonomy(self):
+        import logging
+        import tempfile
+        from core import agent_tools, autonomy, task_runner
+        from life import scheduler
+        self.autonomy = autonomy
+        self._iso_tmp = tempfile.mkdtemp()
+        self._iso_orig = (autonomy.DATA_DIR, autonomy.SCHEDULE_FILE, autonomy.JOURNAL_FILE)
+        self._iso_loggers = (autonomy._log, task_runner._log, agent_tools._log, scheduler._log)
+        autonomy.DATA_DIR = Path(self._iso_tmp)
+        autonomy.SCHEDULE_FILE = Path(self._iso_tmp) / "autonomy.json"
+        autonomy.JOURNAL_FILE = Path(self._iso_tmp) / "autonomy.log"
+        quiet = logging.getLogger("fitz_test_quiet")
+        quiet.handlers = [logging.NullHandler()]
+        quiet.propagate = False
+        autonomy._log = task_runner._log = agent_tools._log = scheduler._log = quiet
+        autonomy._pending_confirm.clear()
+
+    def _restore_autonomy(self):
+        import shutil
+        from core import agent_tools, task_runner
+        from life import scheduler
+        a = self.autonomy
+        a.DATA_DIR, a.SCHEDULE_FILE, a.JOURNAL_FILE = self._iso_orig
+        a._log, task_runner._log, agent_tools._log, scheduler._log = self._iso_loggers
+        a._pending_confirm.clear()
+        shutil.rmtree(self._iso_tmp, ignore_errors=True)
+
+
 class TestFiles(unittest.TestCase):
     def setUp(self):
         from commands import files
@@ -702,24 +734,12 @@ class TestVisionSDK(unittest.TestCase):
 # ======================================================================
 # ТЕСТЫ: автономный режим (core/autonomy.py, life/scheduler.py)
 # ======================================================================
-class TestAutonomy(unittest.TestCase):
+class TestAutonomy(IsolatedAutonomy, unittest.TestCase):
     def setUp(self):
-        import tempfile
-        from core import autonomy
-        self.autonomy = autonomy
-        self._tmp = tempfile.mkdtemp()
-        self._orig = (autonomy.DATA_DIR, autonomy.SCHEDULE_FILE, autonomy.JOURNAL_FILE)
-        autonomy.DATA_DIR = Path(self._tmp)
-        autonomy.SCHEDULE_FILE = Path(self._tmp) / "autonomy.json"
-        autonomy.JOURNAL_FILE = Path(self._tmp) / "autonomy.log"
-        autonomy._pending_confirm.clear()
+        self._isolate_autonomy()
 
     def tearDown(self):
-        import shutil
-        a = self.autonomy
-        a.DATA_DIR, a.SCHEDULE_FILE, a.JOURNAL_FILE = self._orig
-        a._pending_confirm.clear()
-        shutil.rmtree(self._tmp, ignore_errors=True)
+        self._restore_autonomy()
 
     def test_disabled_by_default(self):
         self.assertFalse(self.autonomy.is_enabled())
@@ -910,8 +930,14 @@ class TestAutonomy(unittest.TestCase):
         self.assertEqual(self.autonomy._pending_confirm["action"], "reboot")
 
 
-class TestTaskRunner(unittest.TestCase):
+class TestTaskRunner(IsolatedAutonomy, unittest.TestCase):
     """Task Runner: разбор целей, белый список шагов, выполнение без сети."""
+
+    def setUp(self):
+        self._isolate_autonomy()
+
+    def tearDown(self):
+        self._restore_autonomy()
 
     def test_fallback_plan_ends_with_write_plan(self):
         from core import task_runner
@@ -960,8 +986,14 @@ class TestTaskRunner(unittest.TestCase):
         self.assertTrue(results[1]["ok"])
 
 
-class TestAgentTools(unittest.TestCase):
+class TestAgentTools(IsolatedAutonomy, unittest.TestCase):
     """Инструменты агента: пути только в data/plans и projects; без сети."""
+
+    def setUp(self):
+        self._isolate_autonomy()
+
+    def tearDown(self):
+        self._restore_autonomy()
 
     def test_writable_only_plans_and_projects(self):
         from core import agent_tools
@@ -1038,24 +1070,14 @@ class TestIdle(unittest.TestCase):
             self.assertFalse(idle.detect_idle())
 
 
-class TestTaskQueue(unittest.TestCase):
+class TestTaskQueue(IsolatedAutonomy, unittest.TestCase):
     """Очередь автономного агента: постановка, выполнение только при включённом режиме."""
 
     def setUp(self):
-        import tempfile
-        from core import autonomy
-        self.autonomy = autonomy
-        self._tmp = tempfile.mkdtemp()
-        self._orig = (autonomy.DATA_DIR, autonomy.SCHEDULE_FILE, autonomy.JOURNAL_FILE)
-        autonomy.DATA_DIR = Path(self._tmp)
-        autonomy.SCHEDULE_FILE = Path(self._tmp) / "autonomy.json"
-        autonomy.JOURNAL_FILE = Path(self._tmp) / "autonomy.log"
+        self._isolate_autonomy()
 
     def tearDown(self):
-        import shutil
-        a = self.autonomy
-        a.DATA_DIR, a.SCHEDULE_FILE, a.JOURNAL_FILE = self._orig
-        shutil.rmtree(self._tmp, ignore_errors=True)
+        self._restore_autonomy()
 
     def test_enqueue_adds_queued_goal(self):
         self.autonomy.enqueue_task("улучши код")
@@ -1107,26 +1129,14 @@ class TestTaskQueue(unittest.TestCase):
         self.assertNotIn("delete", " ".join(task_runner.ALLOWED_TOOLS))
 
 
-class TestEmulationAndSleep(unittest.TestCase):
+class TestEmulationAndSleep(IsolatedAutonomy, unittest.TestCase):
     """Эмуляция ввода и сон ПК: только с флагом и подтверждением, без реального ввода в тестах."""
 
     def setUp(self):
-        import tempfile
-        from core import autonomy
-        self.autonomy = autonomy
-        self._tmp = tempfile.mkdtemp()
-        self._orig = (autonomy.DATA_DIR, autonomy.SCHEDULE_FILE, autonomy.JOURNAL_FILE)
-        autonomy.DATA_DIR = Path(self._tmp)
-        autonomy.SCHEDULE_FILE = Path(self._tmp) / "autonomy.json"
-        autonomy.JOURNAL_FILE = Path(self._tmp) / "autonomy.log"
-        autonomy._pending_confirm.clear()
+        self._isolate_autonomy()
 
     def tearDown(self):
-        import shutil
-        a = self.autonomy
-        a.DATA_DIR, a.SCHEDULE_FILE, a.JOURNAL_FILE = self._orig
-        a._pending_confirm.clear()
-        shutil.rmtree(self._tmp, ignore_errors=True)
+        self._restore_autonomy()
 
     def test_emulation_disabled_by_default(self):
         self.assertFalse(self.autonomy.is_emulation_enabled())
@@ -1201,6 +1211,68 @@ class TestEmulationAndSleep(unittest.TestCase):
         self.assertFalse(ck.called)
         self.assertEqual(summary["ok"], 0)
         self.assertEqual(summary["results"][0]["error"], "эмуляция выключена")
+
+
+class TestParseGoalTools(IsolatedAutonomy, unittest.TestCase):
+    """Промпт для API знает все инструменты; агент не читает вне проекта и не запускает чужое."""
+
+    def setUp(self):
+        self._isolate_autonomy()
+
+    def tearDown(self):
+        self._restore_autonomy()
+
+    def test_prompt_lists_all_tools(self):
+        from core import task_runner
+        for tool in ("search_web", "read_file", "open_app", "write_plan", "type_text", "click_at"):
+            self.assertIn(tool, task_runner.TOOLS_PROMPT)
+
+    def test_parse_goal_sends_tools_to_api(self):
+        from unittest.mock import MagicMock
+        from core import task_runner
+        api = MagicMock(enabled=True)
+        api.ask.return_value = '[{"tool": "open_app", "arg": "steam"}]'
+        steps = task_runner.parse_goal("открой steam", api=api)
+        prompt = api.ask.call_args[0][0]
+        self.assertIn("open_app", prompt)
+        self.assertEqual(steps, [{"tool": "open_app", "arg": "steam"}])
+
+    def test_validate_keeps_new_tools_and_drops_emulation(self):
+        from core import task_runner
+        raw = [
+            {"tool": "open_app", "arg": "steam"},
+            {"tool": "read_file", "arg": "README.md"},
+            {"tool": "type_text", "arg": "x"},
+        ]
+        tools = [s["tool"] for s in task_runner._validate_steps(raw)]
+        self.assertEqual(tools, ["open_app", "read_file"])
+
+    def test_read_file_refuses_outside_project(self):
+        from core import agent_tools
+        self.assertFalse(agent_tools.read_file_safe("/etc/passwd")["ok"])
+        self.assertFalse(agent_tools.read_file_safe("../../../etc/passwd")["ok"])
+
+    def test_read_file_reads_inside_project(self):
+        from core import agent_tools
+        res = agent_tools.read_file_safe("core/version.py")
+        self.assertTrue(res["ok"])
+        self.assertIn("__version__", res["text"])
+
+    def test_open_app_refuses_name_outside_allowlist(self):
+        from unittest.mock import patch
+        from core import agent_tools
+        with patch("core.tools.open_app") as oa:
+            res = agent_tools.open_app_safe("rm -rf /")
+        self.assertFalse(res["ok"])
+        self.assertFalse(oa.called)
+
+    def test_open_app_allowed_name_calls_tools(self):
+        from unittest.mock import patch
+        from core import agent_tools
+        with patch("core.tools.open_app", return_value="🚀 Запустил: steam") as oa:
+            res = agent_tools.open_app_safe("steam")
+        oa.assert_called_once_with("steam")
+        self.assertTrue(res["ok"])
 
 
 class TestVersion1201(unittest.TestCase):
