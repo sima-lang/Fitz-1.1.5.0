@@ -1,0 +1,23 @@
+# Зафиксированные версии, на которых проверен Фитц 1.2.0.0 (Linux, Python 3.12).
+# Установка: pip install -r requirements.lock
+# Обновлять вручную после проверки тестами: python3 -m pytest test_fitz.py test_scenarios.py
+
+# ===== ОСНОВА =====
+requests==2.34.2
+python-dotenv==1.2.4
+psutil==7.2.2
+
+# ===== ЗВУК, ГОЛОС, ИЗОБРАЖЕНИЯ =====
+sounddevice==0.5.6
+SpeechRecognition==3.17.0
+numpy==1.26.4
+pygame==2.6.1
+opencv-python==4.11.0.86
+pillow==12.3.0
+
+# ===== GUI =====
+PyQt6==6.10.0
+
+# ===== РАЗРАБОТКА / ТЕСТЫ (в CI) =====
+pytest==9.2.0
+ruff==0.17.3

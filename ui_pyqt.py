@@ -218,7 +218,7 @@ def _close_log():
         try:
             _log_file.close()
         except Exception:
-            log("Import/submodule load skipped — continuing without it")
+            log("Пропущено: не удалось закрыть лог-файл; продолжаю работу")
         _log_file = None
 
 # Гарантируем закрытие даже при краше
@@ -511,7 +511,7 @@ class FitzApp(QMainWindow):
             if hasattr(self, "loading_screen") and self.loading_screen is not None:
                 self.loading_screen.stop_timer()
         except Exception:
-            log("Import/submodule load skipped — continuing without it")
+            log("Пропущено: не удалось остановить таймер загрузки; продолжаю работу")
         self._show_main()
         problems = getattr(self, "_env_problems", [])
         if problems:
@@ -648,7 +648,7 @@ class FitzApp(QMainWindow):
         try:
             play_start()
         except Exception:
-            log("Import/submodule load skipped — continuing without it")
+            log("Пропущено: не удалось запустить звук старта; продолжаю работу")
 
     def _update_status_bar(self):
         api = "OK" if self._api_status and "✅" in self._api_status else "⚠️"
@@ -753,7 +753,7 @@ class FitzApp(QMainWindow):
                 # (оставляем голос как есть, sounds_volume для effects)
                 pass
         except Exception:
-            log("Import/submodule load skipped — continuing without it")
+            log("Пропущено: не удалось применить громкость звуков; продолжаю работу")
 
         self._update_status_bar()
 
@@ -976,7 +976,7 @@ class FitzApp(QMainWindow):
                 input_style += border_style
             self.input_frame.setStyleSheet(input_style)
         except Exception:
-            log("Import/submodule load skipped — continuing without it")
+            log("Пропущено: не удалось обновить стиль поля ввода; продолжаю работу")
         QTimer.singleShot(100, self._animate_border)
 
     def _add_message(self, sender, text, is_user=False):
@@ -1727,7 +1727,7 @@ class FitzApp(QMainWindow):
             if hasattr(self, "mc_timer"):
                 self.mc_timer.stop()
         except Exception:
-            log("Import/submodule load skipped — continuing without it")
+            log("Пропущено: не удалось остановить таймер микрофона; продолжаю работу")
 
         from ui.closing_screen import ClosingScreen
         self.closing_screen = ClosingScreen()

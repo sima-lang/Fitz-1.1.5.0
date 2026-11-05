@@ -784,3 +784,16 @@ class TestSafeLinksAllAddresses(unittest.TestCase):
         from security import safe_links as s
         with patch.object(s.socket, "getaddrinfo", return_value=self._infos(["93.184.216.34"])):
             self.assertFalse(s._is_internal_url("http://host.example/"))
+
+
+# ======================================================================
+# ТЕСТЫ: сообщения об ошибках в ui_pyqt.py не вводят в заблуждение
+# ======================================================================
+class TestMisleadingLogMessage(unittest.TestCase):
+    def test_no_misleading_import_message_left(self):
+        src = (Path(__file__).parent / "ui_pyqt.py").read_text(encoding="utf-8")
+        self.assertNotIn("Import/submodule load skipped", src)
+
+    def test_skip_messages_describe_action(self):
+        src = (Path(__file__).parent / "ui_pyqt.py").read_text(encoding="utf-8")
+        self.assertGreaterEqual(src.count("Пропущено: не удалось"), 6)
