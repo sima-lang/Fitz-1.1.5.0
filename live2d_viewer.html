@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Haru</title>
+    <style>
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+        #canvas { display: block; width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js"></script>
+    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
+
+    <script>
+        window.PIXI = PIXI;
+        window.currentModel = null;
+
+        (async function() {
+            try {
+                const app = new PIXI.Application({
+                    view: document.getElementById('canvas'),
+                    transparent: true,
+                    backgroundAlpha: 0,
+                    resizeTo: window,
+                    antialias: true
+                });
+
+                const modelPath = '/live2d/runtime/haru.model3.json';
+                const model = await PIXI.live2d.Live2DModel.from(modelPath, {
+                    motionPreload: PIXI.live2d.MotionPreloadStrategy.ALL
+                });
+                window.currentModel = model;
+                app.stage.addChild(model);
+
+                const EXPRESSION_FILES = [
+                    'expressions/Normal.exp3.json',
+                    'expressions/Surprised.exp3.json',
+                    'expressions/Sad.exp3.json',
+                    'expressions/Angry.exp3.json',
+                    'expressions/Smile.exp3.json',
+                    'expressions/f01.exp3.json',
+                    'expressions/f02.exp3.json',
+                    'expressions/Blushing.exp3.json',
+                    'expressions/f01.exp3.json',
+                ];
+                const expressionCache = [];
+                for (const file of EXPRESSION_FILES) {
+                    try {
+                        const data = await fetch('/live2d/runtime/' + file).then(r => r.json());
+                        expressionCache.push(data);
+                    } catch (e) {
+                        expressionCache.push(null);
+                    }
+                }
+
+                model.on('hit', (hitAreas) => {
+                    if (hitAreas.includes('body') || hitAreas.includes('head')) {
+                        model.motion('Tap');
+                    }
+                });
+
+                function resizeModel() {
+                    if (!window.currentModel) return;
+                    const internal = model.internalModel;
+                    const mw = internal.width;
+                    const mh = internal.height;
+                    const w = app.screen.width;
+                    const h = app.screen.height;
+                    const scale = Math.min(w / mw, h / mh) * 1.2; 
+                    model.scale.set(scale);
+                    model.x = (w - mw * scale) / 2;
+                    model.y = (h - mh * scale) / 2;
+                }
+
+                resizeModel();
+                app.renderer.on('resize', resizeModel);
+                console.log('Model loaded OK');
+
+                window.setHaruExpression = function(index) {
+                    const data = expressionCache[index];
+                    if (!data || !window.currentModel) return;
+                    const em = window.currentModel.internalModel.motionManager.expressionManager;
+                    if (em && typeof em.setExpression === 'function') {
+                        em.setExpression(data);
+                    }
+                };
+
+                let targetVolume = 0.0;
+                setInterval(async () => {
+                    try {
+                        const response = await fetch('is_speaking.txt?t=' + Date.now(), { cache: 'no-store' });
+                        const text = await response.text();
+                        targetVolume = parseFloat(text.trim()) || 0.0;
+                    } catch (e) {}
+                }, 100);
+
+                const GESTURES = {
+                    neutral: {},
+                    angry:   { PARAM_BROW_L_Y: -0.6, PARAM_BROW_R_Y: -0.6, PARAM_BROW_L_ANGLE: 0.6, PARAM_BROW_R_ANGLE: -0.6 },
+                    joy:     { PARAM_EYE_L_SMILE: 0.8, PARAM_EYE_R_SMILE: 0.8, PARAM_BROW_L_Y: 0.2, PARAM_BROW_R_Y: 0.2 },
+                    sad:     { PARAM_EYE_FORM: 0.6, PARAM_BROW_L_ANGLE: -0.4, PARAM_BROW_R_ANGLE: 0.4 },
+                    alarm:   { PARAM_BROW_L_Y: 0.8, PARAM_BROW_R_Y: 0.8 },
+                };
+                const GESTURE_PARAMS = [...new Set(Object.values(GESTURES).flatMap(g => Object.keys(g)))];
+                const GESTURE_HOLD_MS = 3000;
+                let currentGesture = 'neutral';
+                let gestureTimer = null;
+                const gestureValues = {};
+                GESTURE_PARAMS.forEach(p => gestureValues[p] = 0);
+                const EYE_OPEN_PARAMS = ["PARAM_EYE_L_OPEN", "PARAM_EYE_R_OPEN"];
+
+                function applyGesture(name, holdMs) {
+                    currentGesture = GESTURES[name] ? name : 'neutral';
+                    clearTimeout(gestureTimer);
+                    if (currentGesture !== 'neutral' && holdMs) {
+                        gestureTimer = setTimeout(() => { currentGesture = 'neutral'; }, holdMs);
+                    }
+                }
+                window.setGesture = function(name) { applyGesture(name, GESTURE_HOLD_MS); };
+                window.playMotion = function(group) {
+                    if (!window.currentModel) return;
+                    window.currentModel.motion(group);
+                    applyGesture('neutral');
+                };
+
+                let currentMouthValue = 0.0;
+                model.internalModel.on('beforeModelUpdate', () => {
+                    const coreModel = model.internalModel.coreModel;
+                    currentMouthValue += (targetVolume - currentMouthValue) * 0.15;
+                    currentMouthValue = Math.max(0, Math.min(1, currentMouthValue));
+                    coreModel.setParameterValueById("PARAM_MOUTH_OPEN_Y", currentMouthValue);
+
+                    const target = GESTURES[currentGesture];
+                    GESTURE_PARAMS.forEach(p => {
+                        const goal = target[p] || 0;
+                        gestureValues[p] += (goal - gestureValues[p]) * 0.08;
+                        coreModel.setParameterValueById(p, gestureValues[p]);
+                    });
+                    EYE_OPEN_PARAMS.forEach(p => coreModel.setParameterValueById(p, 1));
+                });
+
+            } catch (e) {
+                console.error('LOAD ERROR:', e);
+            }
+        })();
+    </script>
+</body>
+</html>

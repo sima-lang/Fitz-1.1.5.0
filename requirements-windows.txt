@@ -1,0 +1,31 @@
+# requirements-windows.txt — Зависимости Фитца 1.6.2 для Windows
+# Установка:  pip install -r requirements-windows.txt
+
+# Core
+PyQt6>=6.5
+numpy>=1.24
+python-dotenv
+
+# Голос (Silero TTS)
+torch
+sounddevice
+soundfile
+speech_recognition
+pyttsx3
+
+# Зрение (скриншоты)
+Pillow>=10.0
+mss
+pyautogui
+
+# Звуки
+pygame
+
+# Логирование (встроено)
+# logging — стандартная библиотека
+
+# Сборка exe
+pyinstaller>=6.0
+
+# Опционально (Minecraft-бот — Node.js, не Python)
+# node.js должен быть установлен отдельно

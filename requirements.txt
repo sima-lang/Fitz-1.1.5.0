@@ -1,0 +1,38 @@
+# ===== ОСНОВА =====
+requests
+python-dotenv
+psutil
+
+# ===== ЗВУК И ГОЛОС =====
+sounddevice
+SpeechRecognition
+torch
+torchaudio
+numpy
+pygame
+# playsound          # fallback для звуков (если pygame не нужен)
+opencv-python
+pillow
+
+# ===== OCR И ЗРЕНИЕ =====
+pytesseract
+cryptography
+pyserial
+pytools
+pyautogui
+
+# ===== API И ИИ =====
+openai
+
+# ===== СКРИНШОТЫ (кроссплатформенно) =====
+mss
+
+# ===== LINUX ONLY (Wayland / GNOME) =====
+# ydotool        # системная утилита, ставится через apt (sudo apt install ydotool)
+# wtype          # системная утилита, если нужна альтернатива ydotool
+# grim           # скриншоты на Wayland (если gdbus не работает)
+# gnome-screenshot # запасной вариант для скриншотов
+
+# ===== WINDOWS ONLY =====
+# pywin32        # работа с окнами Windows (для будущего)
+# keyboard       # эмуляция нажатий (если pyautogui не хватает)
