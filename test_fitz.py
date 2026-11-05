@@ -700,6 +700,89 @@ class TestVisionSDK(unittest.TestCase):
 
 
 # ======================================================================
+# ТЕСТЫ: автономный режим (core/autonomy.py, life/scheduler.py)
+# ======================================================================
+class TestAutonomy(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from core import autonomy
+        self.autonomy = autonomy
+        self._tmp = tempfile.mkdtemp()
+        self._orig = (autonomy.DATA_DIR, autonomy.SCHEDULE_FILE, autonomy.JOURNAL_FILE)
+        autonomy.DATA_DIR = Path(self._tmp)
+        autonomy.SCHEDULE_FILE = Path(self._tmp) / "autonomy.json"
+        autonomy.JOURNAL_FILE = Path(self._tmp) / "autonomy.log"
+
+    def tearDown(self):
+        import shutil
+        a = self.autonomy
+        a.DATA_DIR, a.SCHEDULE_FILE, a.JOURNAL_FILE = self._orig
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_disabled_by_default(self):
+        self.assertFalse(self.autonomy.is_enabled())
+
+    def test_dangerous_action_is_rejected(self):
+        self.assertIsNone(self.autonomy.run_safe_action("shutdown"))
+        self.assertIsNone(self.autonomy.run_safe_action("launch_app"))
+        log = self.autonomy.JOURNAL_FILE.read_text(encoding="utf-8")
+        self.assertIn("ОТКЛОНЕНО", log)
+
+    def test_safe_action_runs_and_is_logged(self):
+        result = self.autonomy.run_safe_action("check_system")
+        self.assertIsInstance(result, dict)
+        self.assertIn("cpu_percent", result)
+        self.assertIn("ram_percent", result)
+        self.assertIn("disk_percent", result)
+
+    def test_due_tasks_do_nothing_when_disabled(self):
+        state = self.autonomy.load_state()
+        state["tasks"] = [{"kind": "safe", "action": "check_system"}]
+        self.autonomy.save_state(state)
+        self.assertEqual(self.autonomy.run_due_tasks(), 0)
+
+    def test_due_tasks_run_safe_when_enabled(self):
+        state = self.autonomy.load_state()
+        state["enabled"] = True
+        state["tasks"] = [
+            {"kind": "safe", "action": "check_system"},
+            {"kind": "dangerous", "action": "shutdown"},
+        ]
+        self.autonomy.save_state(state)
+        self.assertEqual(self.autonomy.run_due_tasks(), 1)
+
+    def test_stop_command_disables_mode(self):
+        self.autonomy.set_enabled(True)
+        self.assertTrue(self.autonomy.is_enabled())
+        reply = self.autonomy.handle_stop_command("стоп автономность")
+        self.assertIn("остановлен", reply)
+        self.assertFalse(self.autonomy.is_enabled())
+
+    def test_unrelated_text_is_not_autonomy_command(self):
+        self.assertIsNone(self.autonomy.handle_stop_command("который час"))
+
+    def test_corrupted_schedule_falls_back_to_disabled(self):
+        self.autonomy.SCHEDULE_FILE.write_text("{не json", encoding="utf-8")
+        self.assertFalse(self.autonomy.is_enabled())
+
+    def test_scheduler_starts_once_and_stops(self):
+        import time
+        from life import scheduler
+        self.assertTrue(scheduler.start(interval=1))
+        self.assertFalse(scheduler.start(interval=1))
+        self.assertTrue(scheduler.is_running())
+        scheduler.stop()
+        time.sleep(1.5)
+        self.assertFalse(scheduler.is_running())
+
+
+class TestVersion1201(unittest.TestCase):
+    def test_version_is_1_2_0_1(self):
+        from core.version import __version__
+        self.assertEqual(__version__, "1.2.0.1")
+
+
+# ======================================================================
 # ЗАПУСК
 # ======================================================================
 if __name__ == "__main__":

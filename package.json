@@ -1,6 +1,6 @@
 {
   "name": "fitz14-minecraft-bot",
-  "version": "1.2.0.0",
+  "version": "1.2.0.1",
   "description": "Фитц-бот для Майнкрафта — управляется через mc_to_bot.txt / mc_from_bot.txt",
   "scripts": {
     "bot": "node mine_bot.js"
