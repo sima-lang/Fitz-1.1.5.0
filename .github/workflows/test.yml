@@ -1,0 +1,12 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install pytest pyflakes PyQt6
+      - run: python -m pyflakes $(git ls-files "*.py" | grep -v Fitz.AppDir)
+      - run: QT_QPA_PLATFORM=offscreen python -m pytest test_fitz.py -v
