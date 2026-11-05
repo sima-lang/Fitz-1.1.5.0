@@ -1,0 +1,150 @@
+"""
+greetings.py — Живые приветствия и прощания.
+Адаптируются по:
+  • времени суток
+  • настроению (soul)
+  • активности (awareness)
+  • случайности (чтобы не повторяться)
+Убрано навязчивое упоминание прошлой сессии.
+"""
+import random
+from datetime import datetime
+from core.logger import get_logger
+_log = get_logger("greetings")
+
+
+# ============================================================
+# ПРИВЕТСТВИЯ
+# ============================================================
+GREETINGS_BY_TIME = {
+    "night": [  # 0–5
+        "Ночь на дворе, а ты не спишь. Я рядом.",
+        "Тихо. Все спят, а мы с тобой — нет.",
+        "Полночь. Что не спится, создатель?",
+        "Ночь. Я на посту. Говори.",
+    ],
+    "morning": [  # 6–11
+        "Доброе утро, создатель. С чего начнём?",
+        "Утро. Кофе уже готов?",
+        "Проснулся? Я тоже. Готов к работе.",
+        "Доброе утро. Как спалось?",
+    ],
+    "day": [  # 12–17
+        "День в разгаре. Я здесь.",
+        "Привет. Что делаем?",
+        "Я на связи. Что нужно?",
+    ],
+    "evening": [  # 18–22
+        "Вечер. Может, отдохнём?",
+        "Добрый вечер. Как день прошёл?",
+        "Вечер в разгаре. Я рядом.",
+    ],
+}
+
+
+def _time_bucket() -> str:
+    h = datetime.now().hour
+    if h < 6:
+        return "night"
+    if h < 12:
+        return "morning"
+    if h < 18:
+        return "day"
+    return "evening"
+
+
+def make_greeting(brain=None, soul=None, awareness=None) -> str:
+    """Возвращает живое приветствие с учётом контекста."""
+    parts = []
+
+    # 1) Настроение (исключаем упоминание старых команд)
+    if soul is not None:
+        try:
+            mood = soul.get_status().get("mood", "нейтральное")
+            if mood == "усталое":
+                parts.append("Ты выглядишь уставшим. Может, отдохнёшь?")
+            elif mood == "весёлое":
+                parts.append("Рад тебя видеть в хорошем настроении.")
+            elif mood == "грустное":
+                parts.append("Я рядом, если что.")
+        except Exception:
+            _log.debug("пропущено в life/greetings.py (строка 71)")
+
+    # 2) Активность (только позитивные/интересные варианты)
+    if awareness is not None:
+        try:
+            act = awareness.get_last_activity()
+            if act == "coding":
+                parts.append("Вижу, ты в коде. Помочь?")
+            elif act == "game":
+                parts.append("Играешь? Удачи.")
+            # Не упоминаем "unknown" или пустую активность
+        except Exception:
+            _log.debug("пропущено в life/greetings.py (строка 83)")
+
+    # 3) Базовое приветствие по времени
+    bucket = _time_bucket()
+    base = random.choice(GREETINGS_BY_TIME.get(bucket, GREETINGS_BY_TIME["day"]))
+
+    # 4) Склеиваем
+    if parts:
+        return base + " " + " ".join(parts)
+    return base
+
+
+# ============================================================
+# ПРОЩАНИЯ
+# ============================================================
+FAREWELLS = {
+    "night": [
+        "Спокойной ночи, создатель. Я посторожу.",
+        "Ночь. Отдыхай. Утром увидимся.",
+        "До утра. Спи спокойно.",
+    ],
+    "morning": [
+        "До встречи. Хорошего дня.",
+        "Увидимся позже. Не забывай отдыхать.",
+        "Пока. Я здесь, если понадоблюсь.",
+    ],
+    "day": [
+        "До встречи. Если что — зови.",
+        "Ухожу в тень. Но я рядом.",
+        "Пока. Удачи в делах.",
+    ],
+    "evening": [
+        "Хорошего вечера. Отдыхай.",
+        "До встречи. Не переутомляйся.",
+        "Пока. Я на посту.",
+    ],
+}
+
+
+def make_farewell(brain=None, soul=None) -> str:
+    """Возвращает живое прощание."""
+    parts = []
+
+    # 1) Если было много разговоров — упомянуть
+    if soul is not None:
+        try:
+            count = soul.get_status().get("conversations", 0)
+            if count > 5:
+                parts.append(f"Сегодня мы говорили {count} раз. Спасибо.")
+        except Exception:
+            _log.debug("пропущено в life/greetings.py (строка 133)")
+
+    # 2) Если настроение грустное — поддержать
+    if soul is not None:
+        try:
+            mood = soul.get_status().get("mood", "нейтральное")
+            if mood == "грустное":
+                parts.append("Не грусти. Я вернусь.")
+        except Exception:
+            _log.debug("пропущено в life/greetings.py (строка 142)")
+
+    # 3) Базовое прощание
+    bucket = _time_bucket()
+    base = random.choice(FAREWELLS.get(bucket, FAREWELLS["day"]))
+
+    if parts:
+        return base + " " + " ".join(parts)
+    return base
