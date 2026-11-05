@@ -604,7 +604,7 @@ class Brain:
             [], 10, attempts=1,
         )
         if verdict and verdict.strip().lower().startswith("нет"):
-            self._log(f"рефлексия: ответ признан бесполезным, переспрашиваю")
+            self._log("рефлексия: ответ признан бесполезным, переспрашиваю")
             better = self._ask_with_retry(
                 f"Предыдущий ответ был бесполезен. Ответь на вопрос развёрнуто: {question}",
                 [], max_tokens, attempts=1,
@@ -658,12 +658,8 @@ class Brain:
             from ui.settings_dialog import load_settings as _ls
             _ps = _ls()
             _sarcasm = _ps.get("personality_sarcasm", True)
-            _humor = _ps.get("personality_humor", True)
-            _empathy = _ps.get("personality_empathy", True)
         except Exception:
             _sarcasm = True
-            _humor = True
-            _empathy = True
 
         prompt = (
             "Ты — Фитц, саркастичный, но заботливый ИИ-ассистент. "

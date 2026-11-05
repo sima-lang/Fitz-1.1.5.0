@@ -162,7 +162,7 @@ def handle_exception(exc_type, exc_value, exc_traceback):
     print("=" * 60 + "\n")
 sys.excepthook = handle_exception
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtGui import QIcon, QShortcut, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -243,7 +243,7 @@ def log(msg):
         except Exception:
             log("Import/submodule load skipped — continuing without it")
 
-from core.config import Config
+
 from core import action_journal
 from core.memory import Memory
 from core.brain import Brain
@@ -413,7 +413,6 @@ class FitzApp(QMainWindow):
     def _load_core(self):
         """Загрузка ядра в фоновом потоке. Все мутации self.* защищены _core_lock."""
         self.progress_signal.emit(10, "Загрузка памяти...")
-        config = Config()
 
         with self._core_lock:
             self.memory = Memory()
@@ -733,7 +732,6 @@ class FitzApp(QMainWindow):
         # ---- Звуки ----
         try:
             if self.voice:
-                vol = settings.get("sounds_volume", 80) / 100.0
                 # громкость звуков интерфейса — отдельно от голоса
                 # (оставляем голос как есть, sounds_volume для effects)
                 pass
@@ -1174,7 +1172,7 @@ class FitzApp(QMainWindow):
                     dialog=None
                 )
                 if self.mc_process:
-                    msg = f"🎮 Бот подключён к localhost:34485 (ник: FitzBot). Я буду управлять им автоматически."
+                    msg = "🎮 Бот подключён к localhost:34485 (ник: FitzBot). Я буду управлять им автоматически."
                 else:
                     msg = "⚠️ Не удалось запустить бота. Проверь, что Node.js установлен (npm install mineflayer)."
                 self.add_message_signal.emit("🛡️ Фитц", msg, False)

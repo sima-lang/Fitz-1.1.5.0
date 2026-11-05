@@ -139,7 +139,6 @@ class FitzAgent:
     def _execute_with_retry(self, step: dict) -> str:
         """Выполняет шаг. При ошибке пробует другой путь (say)."""
         tool = step.get("tool", "say")
-        args = step.get("args", {})
 
         for attempt in range(self.max_retries + 1):
             try:

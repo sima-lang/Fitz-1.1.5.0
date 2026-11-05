@@ -27,7 +27,6 @@ try:
 except Exception:
     onnx_asr = None
 
-import numpy as np
 _log = get_logger("wake_word")
 
 

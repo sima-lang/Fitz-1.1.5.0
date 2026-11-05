@@ -6,11 +6,10 @@ test_fitz.py — Автотесты для Фитца 1.5.0.
 """
 import os
 import sys
-import json
 import unittest
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open, PropertyMock
+from unittest.mock import patch, MagicMock, mock_open
 
 # Добавляем корень проекта в sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent
