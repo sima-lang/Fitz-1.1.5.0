@@ -626,7 +626,8 @@ class TestLongTermMemory(unittest.TestCase):
     def setUpClass(cls):
         from core.intelligence import Intelligence
         import tempfile
-        cls._tmp = tempfile.mktemp(suffix=".db")
+        fd, cls._tmp = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
         cls.intel = Intelligence(db_path=cls._tmp)
 
     def test_remember_and_recall(self):
@@ -664,7 +665,10 @@ class TestVisionSDK(unittest.TestCase):
     @patch("core.vision_sdk.OpenAI")
     def test_describe_screen(self, mock_openai_cls, mock_shot):
         """describe_screen с мок-API и мок-скриншотом."""
-        mock_shot.return_value = "/tmp/test.png"
+        tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmpdir.cleanup)
+        shot = os.path.join(tmpdir.name, "test.png")
+        mock_shot.return_value = shot
         mock_client = MagicMock()
         mock_choice = MagicMock()
         mock_choice.message.content = "На экране: код Python"
@@ -673,8 +677,8 @@ class TestVisionSDK(unittest.TestCase):
         )
         mock_openai_cls.return_value = mock_client
 
-        # Создаём фейковый скриншот
-        Path("/tmp/test.png").write_bytes(b"fake-png-data")
+        # Создаём фейковый скриншот во временном каталоге
+        Path(shot).write_bytes(b"fake-png-data")
 
         with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}):
             from core.vision_sdk import describe_screen

@@ -123,7 +123,7 @@ def _mark_copied(key: str):
 def _get_image_hash(file_path: str) -> str:
     try:
         with open(file_path, "rb") as f:
-            return hashlib.md5(f.read()).hexdigest()
+            return hashlib.sha256(f.read()).hexdigest()
     except Exception:
         return ""
 
