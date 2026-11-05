@@ -142,3 +142,111 @@ def handle_stop_command(text: str):
         set_enabled(True)
         return "Автономный режим включён (только безопасные действия)."
     return None
+
+
+# ----------------------------------------------------------------------
+# Этап 2: Сторож (Guardian)
+# ----------------------------------------------------------------------
+GUARDIAN_CPU_LIMIT = 90.0
+GUARDIAN_DISK_LIMIT = 95.0
+GUARDIAN_INTERVAL_SEC = 300  # 5 минут
+
+
+def guardian_check(metrics: dict) -> list:
+    """Возвращает список предупреждений по метрикам check_system. Чистая функция, без I/O."""
+    warnings = []
+    cpu = metrics.get("cpu_percent")
+    disk = metrics.get("disk_percent")
+    if cpu is not None and cpu > GUARDIAN_CPU_LIMIT:
+        warnings.append(f"ЦП {cpu:.0f}% (порог {GUARDIAN_CPU_LIMIT:.0f}%)")
+    if disk is not None and disk > GUARDIAN_DISK_LIMIT:
+        warnings.append(f"диск {disk:.0f}% (порог {GUARDIAN_DISK_LIMIT:.0f}%)")
+    return warnings
+
+
+def run_guardian(notify=None) -> list:
+    """
+    Один проход Сторожа: проверяет check_system, при превышении пишет в журнал
+    и вызывает notify(text) — например, для отправки в чат через add_message_signal.
+    Возвращает список предупреждений.
+    """
+    metrics = run_safe_action("check_system")
+    if not metrics:
+        return []
+    warnings = guardian_check(metrics)
+    for w in warnings:
+        text = f"⚠️ Сторож: {w}. Могу предложить очистку — скажи «очисти кэш»."
+        _journal(f"СТОРОЖ: {w}")
+        if notify is not None:
+            try:
+                notify(text)
+            except Exception as e:
+                _journal(f"ОШИБКА уведомления: {e!r}")
+    return warnings
+
+
+# ----------------------------------------------------------------------
+# Этап 2: опасные действия с подтверждением
+# ----------------------------------------------------------------------
+DANGEROUS_ACTIONS = {
+    "launch_app": "запустить приложение",
+    "shutdown": "выключить ПК",
+    "reboot": "перезагрузить ПК",
+    "delete_outside_project": "удалить файлы вне папки проекта",
+    "send_external": "отправить сообщение наружу",
+}
+
+_pending_confirm = {}  # action -> dict; ожидает ответа «да/нет»
+
+
+def request_dangerous_action(action: str) -> dict:
+    """
+    Не выполняет действие. Запоминает его как ожидающее подтверждения
+    и возвращает {"needs_confirm": True, "action": action, ...}.
+    Для безопасных действий возвращает {"needs_confirm": False}.
+    """
+    if action not in DANGEROUS_ACTIONS:
+        return {"needs_confirm": False, "action": action}
+    _pending_confirm.clear()
+    _pending_confirm["action"] = action
+    _journal(f"ЗАПРОС ПОДТВЕРЖДЕНИЯ: {action}")
+    return {
+        "needs_confirm": True,
+        "action": action,
+        "question": f"Создатель, я хочу выполнить {DANGEROUS_ACTIONS[action]}. Подтверждаешь? (да/нет)",
+    }
+
+
+def has_pending_confirm() -> bool:
+    return "action" in _pending_confirm
+
+
+def resolve_confirm(answer: str) -> str | None:
+    """
+    Обрабатывает ответ «да»/«нет» на ожидающее подтверждение.
+    Возвращает текст ответа Фитца или None, если ожидания нет.
+    Выполнение реально опасных действий здесь НЕ происходит: только отметка
+    и журнал. Исполнитель подключается отдельно (см. execute_confirmed).
+    """
+    if not has_pending_confirm():
+        return None
+    action = _pending_confirm.pop("action")
+    low = answer.lower().strip()
+    if low in ("да", "подтверждаю", "yes", "ок", "давай"):
+        _journal(f"ПОДТВЕРЖДЕНО: {action}")
+        return execute_confirmed(action)
+    if low in ("нет", "отмена", "не надо", "no"):
+        _journal(f"ОТМЕНЕНО: {action}")
+        return "Хорошо, не выполняю."
+    # Любой другой ответ — отменяем, чтобы не выполнить по неясному сообщению
+    _journal(f"ОТМЕНЕНО (неясный ответ): {action}")
+    return "Не поняла ответ, действие отменено. Скажи «да» или «нет», если хочешь повторить."
+
+
+def execute_confirmed(action: str) -> str:
+    """
+    Исполнитель подтверждённого действия. Пока не подключён ни одного реального
+    исполнителя: возвращает честный отказ, а не имитирует выполнение.
+    """
+    _journal(f"НЕ ВЫПОЛНЕНО: исполнитель для «{action}» не подключён")
+    return f"Подтверждение получено, но исполнитель для «{DANGEROUS_ACTIONS[action]}» ещё не подключён."

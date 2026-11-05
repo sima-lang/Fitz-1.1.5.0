@@ -712,11 +712,13 @@ class TestAutonomy(unittest.TestCase):
         autonomy.DATA_DIR = Path(self._tmp)
         autonomy.SCHEDULE_FILE = Path(self._tmp) / "autonomy.json"
         autonomy.JOURNAL_FILE = Path(self._tmp) / "autonomy.log"
+        autonomy._pending_confirm.clear()
 
     def tearDown(self):
         import shutil
         a = self.autonomy
         a.DATA_DIR, a.SCHEDULE_FILE, a.JOURNAL_FILE = self._orig
+        a._pending_confirm.clear()
         shutil.rmtree(self._tmp, ignore_errors=True)
 
     def test_disabled_by_default(self):
@@ -774,6 +776,79 @@ class TestAutonomy(unittest.TestCase):
         scheduler.stop()
         time.sleep(1.5)
         self.assertFalse(scheduler.is_running())
+
+    # ---- Этап 2: Сторож ----
+    def test_guardian_thresholds(self):
+        self.assertEqual(self.autonomy.guardian_check({"cpu_percent": 95, "disk_percent": 50}),
+                         ["ЦП 95% (порог 90%)"])
+        self.assertEqual(len(self.autonomy.guardian_check({"cpu_percent": 10, "disk_percent": 96})), 1)
+        self.assertEqual(self.autonomy.guardian_check({"cpu_percent": 90, "disk_percent": 95}), [])
+
+    def test_guardian_notifies_and_journals_on_breach(self):
+        sent = []
+        orig = self.autonomy.run_safe_action
+        self.autonomy.run_safe_action = lambda name: {"cpu_percent": 99, "ram_percent": 10, "disk_percent": 10}
+        try:
+            warnings = self.autonomy.run_guardian(notify=sent.append)
+        finally:
+            self.autonomy.run_safe_action = orig
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(len(sent), 1)
+        self.assertIn("Сторож", sent[0])
+        self.assertIn("СТОРОЖ", self.autonomy.JOURNAL_FILE.read_text(encoding="utf-8"))
+
+    def test_guardian_silent_when_within_limits(self):
+        sent = []
+        orig = self.autonomy.run_safe_action
+        self.autonomy.run_safe_action = lambda name: {"cpu_percent": 5, "ram_percent": 10, "disk_percent": 20}
+        try:
+            self.assertEqual(self.autonomy.run_guardian(notify=sent.append), [])
+        finally:
+            self.autonomy.run_safe_action = orig
+        self.assertEqual(sent, [])
+
+    def test_guardian_interval_is_five_minutes(self):
+        self.assertEqual(self.autonomy.GUARDIAN_INTERVAL_SEC, 300)
+
+    # ---- Этап 2: подтверждение опасных действий ----
+    def test_dangerous_request_does_not_execute(self):
+        r = self.autonomy.request_dangerous_action("shutdown")
+        self.assertTrue(r["needs_confirm"])
+        self.assertEqual(r["action"], "shutdown")
+        self.assertIn("Подтверждаешь? (да/нет)", r["question"])
+        self.assertTrue(self.autonomy.has_pending_confirm())
+
+    def test_safe_action_request_needs_no_confirm(self):
+        r = self.autonomy.request_dangerous_action("check_system")
+        self.assertFalse(r["needs_confirm"])
+        self.assertFalse(self.autonomy.has_pending_confirm())
+
+    def test_no_pending_means_no_resolution(self):
+        self.assertIsNone(self.autonomy.resolve_confirm("да"))
+
+    def test_answer_no_cancels(self):
+        self.autonomy.request_dangerous_action("reboot")
+        reply = self.autonomy.resolve_confirm("нет")
+        self.assertIn("не выполняю", reply)
+        self.assertFalse(self.autonomy.has_pending_confirm())
+
+    def test_unclear_answer_cancels_not_executes(self):
+        self.autonomy.request_dangerous_action("shutdown")
+        reply = self.autonomy.resolve_confirm("может быть")
+        self.assertIn("отменено", reply)
+        self.assertFalse(self.autonomy.has_pending_confirm())
+
+    def test_answer_yes_does_not_fake_execution(self):
+        # Исполнителя пока нет: «да» не должно притворяться выполнением
+        self.autonomy.request_dangerous_action("shutdown")
+        reply = self.autonomy.resolve_confirm("да")
+        self.assertIn("не подключён", reply)
+        self.assertNotIn("выполнено", reply.lower().replace("не выполнено", ""))
+
+    def test_new_request_replaces_pending(self):
+        self.autonomy.request_dangerous_action("shutdown")
+        self.autonomy.request_dangerous_action("reboot")
+        self.assertEqual(self.autonomy._pending_confirm["action"], "reboot")
 
 
 class TestVersion1201(unittest.TestCase):

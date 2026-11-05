@@ -502,6 +502,15 @@ class FitzApp(QMainWindow):
             self.autosave = get_autosave(brain=self.brain, soul=self.soul, memory=self.memory)
             self.guardian = get_guardian(voice=self.voice)
 
+            # Сторож автономного режима (этап 2): работает только при включённой автономности
+            try:
+                from life import scheduler as _scheduler
+                _scheduler.start_guardian(
+                    notify=lambda t: self.add_message_signal.emit("🛡️ Фитц", t, False)
+                )
+            except Exception as e:
+                log(f"Пропущено: не удалось запустить сторожа автономности ({e}); продолжаю работу")
+
             self.brain.soul = self.soul
             self.brain.awareness = self.awareness
             self.brain.voice = self.voice
@@ -1071,6 +1080,17 @@ class FitzApp(QMainWindow):
                 self._play_all_motions()
                 self.add_message_signal.emit("🛡️ Фитц", "Показываю все анимации.", False)
                 return
+
+            # ===== ОЖИДАНИЕ ПОДТВЕРЖДЕНИЯ ОПАСНОГО ДЕЙСТВИЯ (автономный режим, этап 2) =====
+            from core import autonomy as _autonomy
+            if _autonomy.has_pending_confirm():
+                reply = _autonomy.resolve_confirm(text)
+                if reply is not None:
+                    self.add_message_signal.emit("🛡️ Фитц", reply, False)
+                    if self.voice:
+                        self.voice.speak(reply)
+                    self.typing_signal.emit(False)
+                    return
 
             # ===== ОТКАЗ НА ЛЮБОЕ ПРЕДЛОЖЕНИЕ ИНИЦИАТИВЫ =====
             if (self.initiative and self.initiative.awaiting_answer()

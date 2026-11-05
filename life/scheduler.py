@@ -4,6 +4,9 @@ life/scheduler.py — фоновый планировщик автономног
 Работает отдельным демон-потоком и раз в интервал проверяет расписание
 (data/autonomy.json). Задачи выполняются только если режим включён.
 Остановка: флаг enabled=false (кнопка / «стоп автономность») или завершение процесса.
+
+Этап 2: Сторож (Guardian) — отдельный поток, раз в 5 минут вызывает
+core.autonomy.run_guardian(notify). notify передаёт GUI (add_message_signal).
 """
 import threading
 
@@ -16,6 +19,9 @@ DEFAULT_INTERVAL_SEC = 60
 
 _stop_event = threading.Event()
 _thread = None
+
+_guardian_stop = threading.Event()
+_guardian_thread = None
 
 
 def _loop(interval: int) -> None:
@@ -47,3 +53,41 @@ def stop() -> None:
 
 def is_running() -> bool:
     return bool(_thread and _thread.is_alive())
+
+
+# ----------------------------------------------------------------------
+# Сторож (Guardian), этап 2
+# ----------------------------------------------------------------------
+def _guardian_loop(interval: int, notify) -> None:
+    _log.info("сторож запущен, интервал %s с", interval)
+    while not _guardian_stop.is_set():
+        try:
+            # Сторож работает только при включённом автономном режиме
+            if autonomy.is_enabled():
+                autonomy.run_guardian(notify=notify)
+        except Exception as e:
+            _log.error("ошибка сторожа: %r", e)
+        _guardian_stop.wait(interval)
+    _log.info("сторож остановлен")
+
+
+def start_guardian(notify=None, interval: int = autonomy.GUARDIAN_INTERVAL_SEC) -> bool:
+    """Запускает Сторожа в фоне. Возвращает False, если уже запущен."""
+    global _guardian_thread
+    if _guardian_thread and _guardian_thread.is_alive():
+        return False
+    _guardian_stop.clear()
+    _guardian_thread = threading.Thread(
+        target=_guardian_loop, args=(interval, notify),
+        name="autonomy-guardian", daemon=True,
+    )
+    _guardian_thread.start()
+    return True
+
+
+def stop_guardian() -> None:
+    _guardian_stop.set()
+
+
+def is_guardian_running() -> bool:
+    return bool(_guardian_thread and _guardian_thread.is_alive())
