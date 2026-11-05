@@ -9,7 +9,7 @@ import sys
 import unittest
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import patch, MagicMock
 
 # Добавляем корень проекта в sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -25,10 +25,20 @@ class TestFiles(unittest.TestCase):
         self.files = files
 
     def test_is_safe_path_allowed(self):
-        """Разрешённый путь (домашняя папка) — True."""
+        """Пользовательский каталог (Документы) — True."""
         home = os.path.expanduser("~")
-        f = os.path.join(home, "test.txt")
+        f = os.path.join(home, "Документы", "test.txt")
         self.assertTrue(self.files._is_safe_path(f))
+
+    def test_is_safe_path_ssh_keys_denied(self):
+        """Ключи SSH в домашней папке — False."""
+        home = os.path.expanduser("~")
+        self.assertFalse(self.files._is_safe_path(os.path.join(home, ".ssh", "id_rsa")))
+
+    def test_is_safe_path_gnupg_denied(self):
+        """Ключи GnuPG в домашней папке — False."""
+        home = os.path.expanduser("~")
+        self.assertFalse(self.files._is_safe_path(os.path.join(home, ".gnupg", "secring.gpg")))
 
     def test_is_safe_path_etc_passwd(self):
         """Запрещённый путь /etc/passwd — False."""
@@ -569,17 +579,17 @@ class TestSettingsDialog(unittest.TestCase):
         s = load_settings()
         self.assertIsInstance(s, dict)
 
-    @patch("ui.settings_dialog.SETTINGS_FILE")
-    def test_save_settings_writes_json(self, mock_file):
-        """save_settings пишет JSON через mock."""
+    def test_save_settings_writes_json(self):
+        """save_settings пишет настройки на диск и их можно прочитать обратно."""
+        import json
+        from ui import settings_dialog
         from ui.settings_dialog import save_settings, DEFAULT_SETTINGS
-        mock_path = MagicMock()
-        mock_file.__truediv__ = MagicMock()
-        mock_file.parent = mock_path
-
-        with patch("builtins.open", mock_open()) as m:
-            save_settings(DEFAULT_SETTINGS.copy())
-            m.assert_called_once()
+        with tempfile.TemporaryDirectory() as d:
+            target = Path(d) / "settings.json"
+            with patch.object(settings_dialog, "SETTINGS_FILE", target):
+                save_settings(DEFAULT_SETTINGS.copy())
+            self.assertEqual(json.loads(target.read_text(encoding="utf-8")), DEFAULT_SETTINGS)
+            self.assertFalse((Path(d) / "settings.json.tmp").exists())
 
 
 # ======================================================================
@@ -690,3 +700,87 @@ class TestVisionSDK(unittest.TestCase):
 # ======================================================================
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+# ======================================================================
+# ТЕСТЫ: версия (core/version.py == package.json)
+# ======================================================================
+class TestVersionSync(unittest.TestCase):
+    def test_package_json_matches_core_version(self):
+        import json
+        from core.version import __version__
+        with open(PROJECT_ROOT / "package.json", encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["version"], __version__)
+
+
+# ======================================================================
+# ТЕСТЫ: логи по модулям (core/logger.py)
+# ======================================================================
+class TestModuleLogs(unittest.TestCase):
+    def test_voice_and_brain_have_own_files(self):
+        from core.logger import get_logger, _MODULE_FILES
+        self.assertEqual(_MODULE_FILES["voice"], "voice.log")
+        self.assertEqual(_MODULE_FILES["brain"], "brain.log")
+        self.assertEqual(_MODULE_FILES["ui"], "ui.log")
+        lg = get_logger("voice")
+        self.assertEqual(lg, get_logger("voice"))
+        self.assertEqual(len(lg.handlers), 1)
+
+
+# ======================================================================
+# ТЕСТЫ: команды состояния и поиска по истории (commands/system.py)
+# ======================================================================
+class TestSystemStatusAndHistory(unittest.TestCase):
+    def setUp(self):
+        from commands import system
+        self.system = system
+
+    def test_status_shows_api_key_presence_without_value(self):
+        with patch.dict(os.environ, {"API_KEY": "sk-SECRET-VALUE-123"}):
+            out = self.system.handle("состояние", None, None)
+        self.assertIn("API-ключ: задан", out)
+        self.assertNotIn("sk-SECRET-VALUE-123", out)
+
+    def test_history_search_empty_query_prompts(self):
+        self.assertEqual(self.system.handle("найди в истории", None, None),
+                         "Что искать в истории?")
+
+    def test_history_search_no_match(self):
+        out = self.system.handle("найди в истории zzqqxx_nomatch", None, None)
+        self.assertIn("нет совпадений", out)
+
+
+# ======================================================================
+# ТЕСТЫ: SSRF через редирект (security/safe_links.py)
+# ======================================================================
+class TestSafeLinksRedirect(unittest.TestCase):
+    def test_redirect_to_internal_is_not_fetched(self):
+        from security import safe_links as s
+        resp = MagicMock()
+        resp.is_redirect = True
+        resp.status_code = 302
+        resp.headers = {"Location": "http://10.0.0.5/admin"}
+        with patch.object(s.requests, "get", return_value=resp) as get, \
+             patch.object(s, "_is_internal_url", side_effect=lambda u: "10.0.0.5" in u):
+            final, r, hit = s._fetch_checked("https://example.com/go")
+        self.assertTrue(hit)
+        called = [c.args[0] for c in get.call_args_list]
+        self.assertNotIn("http://10.0.0.5/admin", called)
+
+
+# ======================================================================
+# ТЕСТЫ: SSRF — проверка всех адресов хоста, включая IPv6 (security/safe_links.py)
+# ======================================================================
+class TestSafeLinksAllAddresses(unittest.TestCase):
+    @staticmethod
+    def _infos(addrs):
+        return [(None, None, None, "", (a, 0)) for a in addrs]
+
+    def test_mixed_public_and_internal_ipv6_is_blocked(self):
+        from security import safe_links as s
+        with patch.object(s.socket, "getaddrinfo", return_value=self._infos(["93.184.216.34", "fe80::1"])):
+            self.assertTrue(s._is_internal_url("http://host.example/"))
+
+    def test_public_only_is_allowed(self):
+        from security import safe_links as s
+        with patch.object(s.socket, "getaddrinfo", return_value=self._infos(["93.184.216.34"])):
+            self.assertFalse(s._is_internal_url("http://host.example/"))

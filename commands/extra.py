@@ -201,32 +201,4 @@ def handle(text, memory, core):
             return app.set_guardian_mode(False)
         return "⚠️ Режим хранителя недоступен (UI не подключён)"
    
-        # ===== ЖАДНОСТЬ (GREED) =====
-    if "жадность" in low or "greed" in low or "телеграм" in low:
-        try:
-            import os
-            import importlib.util
-            
-            # Путь к файлу greed.py на рабочем столе
-            greed_path = os.path.expanduser("~/Рабочий стол/fitz_dlc_sins/greed.py")
-            
-            if not os.path.exists(greed_path):
-                return "⚠️ Файл greed.py не найден на рабочем столе."
-
-            # Загружаем модуль динамически
-            spec = importlib.util.spec_from_file_location("greed_module", greed_path)
-            greed = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(greed)
-
-            if "включ" in low or "подключ" in low:
-                return greed._start_bot(core)
-            elif "выключ" in low or "отключ" in low:
-                return greed._stop_bot()
-            elif "статус" in low:
-                if greed._running:
-                    return "😈 GREED активен. Бот слушает Telegram."
-                return "😈 GREED выключен."
-        except Exception as e:
-            return f"⚠️ Ошибка GREED: {e}"
-
     return None

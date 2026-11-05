@@ -45,12 +45,37 @@ def _is_internal_url(url: str) -> bool:
         if hostname.lower() in _BLOCKED_HOSTNAMES:
             return True
         # Разрешаем DNS и проверяем IP
-        resolved_ip = socket.gethostbyname(hostname)
-        addr = ipaddress.ip_address(resolved_ip)
-        return any(addr in net for net in _BLOCKED_NETWORKS)
+        infos = socket.getaddrinfo(hostname, None)
+        return any(
+            ipaddress.ip_address(info[4][0].split("%")[0]) in net
+            for info in infos
+            for net in _BLOCKED_NETWORKS
+        )
     except Exception as e:
         _log.warning("SSRF-проверка не выполнена для %s: %s", url, e)
         return True
+
+
+def _fetch_checked(url: str, max_redirects: int = 5):
+    """Загружает URL, проверяя КАЖДЫЙ шаг редиректа до запроса.
+
+    Возвращает (final_url, response, ssrf_hit). Если какой-то шаг ведёт
+    во внутреннюю сеть — запрос к нему не выполняется, ssrf_hit=True.
+    """
+    current = url
+    for _ in range(max_redirects + 1):
+        if _is_internal_url(current):
+            return current, None, True
+        r = requests.get(current, timeout=5, allow_redirects=False)
+        if r.is_redirect or r.status_code in (301, 302, 303, 307, 308):
+            location = r.headers.get("Location")
+            if not location:
+                return current, r, False
+            from urllib.parse import urljoin
+            current = urljoin(current, location)
+            continue
+        return current, r, False
+    return current, None, True
 
 
 class SafeLinks:
@@ -89,17 +114,14 @@ class SafeLinks:
         # 3. Доступность
         if requests is not None:
             try:
-                r = requests.get(url, timeout=5, allow_redirects=True)
-                final_url = r.url
+                final_url, r, ssrf_hit = _fetch_checked(url)
+                if ssrf_hit:
+                    results.append("⛔ Редирект ведёт на внутренний адрес (SSRF). Запрос не выполнен.")
+                    return "\n".join(results)
 
-                # Проверяем расширение после редиректа
                 for ext in self.dangerous_extensions:
                     if ext in final_url.lower():
                         results.append(f"⚠️ Опасное расширение после редиректа: {ext}")
-
-                # Проверяем, не увёл ли редирект на внутренний адрес
-                if _is_internal_url(final_url):
-                    results.append("⛔ Редирект ведёт на внутренний адрес (SSRF).")
 
                 if r.status_code == 200:
                     results.append(f"✅ Ссылка доступна (код {r.status_code})")

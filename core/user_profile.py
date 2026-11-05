@@ -4,6 +4,7 @@ user_profile.py — Долгосрочный профиль пользовате
 """
 import os
 import json
+from core.utils import atomic_write_json
 from core.logger import get_logger
 _log = get_logger("user_profile")
 
@@ -31,8 +32,7 @@ class UserProfile:
 
     def save(self):
         try:
-            with open(self.path, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, indent=2, ensure_ascii=False)
+            atomic_write_json(self.path, self.data)
         except Exception:
             _log.debug("пропущено в core/user_profile.py (строка 37)")
 

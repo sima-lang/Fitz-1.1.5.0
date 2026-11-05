@@ -10,6 +10,7 @@ import threading
 from datetime import datetime
 
 from core.logger import get_logger
+from core.utils import atomic_write_json
 
 _blog = get_logger("brain")
 
@@ -147,8 +148,7 @@ class Brain:
                 if len(self.data.get("conversation_history", [])) > 500:
                     self.data["conversation_history"] = \
                         self.data["conversation_history"][-300:]
-                with open(self.path, "w", encoding="utf-8") as f:
-                    json.dump(self.data, f, indent=2, ensure_ascii=False)
+                atomic_write_json(self.path, self.data)
             except Exception as e:
                 print(f"⚠️ Brain: не удалось сохранить: {e}")
 

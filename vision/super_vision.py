@@ -44,6 +44,19 @@ for p in _TESSERACT_PATHS:
         break
 
 
+def _is_portal_screenshot(path: str) -> bool:
+    """True только для скриншотов портала: кеш GNOME целиком, либо файл
+    с префиксом screenshot прямо в temp-каталоге. Остальной /tmp не трогаем."""
+    import tempfile
+    real = os.path.realpath(path)
+    gnome_dir = os.path.realpath(os.path.expanduser("~/.cache/gnome-screenshot"))
+    if os.path.commonpath([real, gnome_dir]) == gnome_dir:
+        return True
+    tmp_dir = os.path.realpath(tempfile.gettempdir())
+    return (os.path.dirname(real) == tmp_dir
+            and os.path.basename(real).lower().startswith("screenshot"))
+
+
 class SuperVision:
     def __init__(self):
         self.running = False
@@ -144,7 +157,11 @@ class SuperVision:
                     src = urllib.parse.unquote(uri[7:])
                     img = Image.open(src)
                     img.load()
-                    os.remove(src)
+                    # Удаляем только скриншоты портала из его каталогов; чужие пути не трогаем
+                    if _is_portal_screenshot(src):
+                        os.remove(src)
+                    else:
+                        print(f"⚠️ Портал вернул путь вне своего каталога, файл не удалён: {src}")
                     return img
             print("⚠️ Portal не ответил за 10 сек")
             return None

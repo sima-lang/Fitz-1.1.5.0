@@ -162,6 +162,17 @@ def handle_exception(exc_type, exc_value, exc_traceback):
     print("=" * 60 + "\n")
 sys.excepthook = handle_exception
 
+
+# Ошибки в фоновых потоках (голос, инициатива, зрение) тоже не теряем
+def _handle_thread_exception(args):
+    if args.exc_type is SystemExit:
+        return
+    print(f"❌ ОШИБКА В ПОТОКЕ {getattr(args.thread, 'name', '?')}:")
+    traceback.print_exception(args.exc_type, args.exc_value, args.exc_traceback)
+
+
+threading.excepthook = _handle_thread_exception
+
 from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtGui import QIcon, QShortcut, QKeySequence
 from PyQt6.QtWidgets import (
@@ -231,8 +242,13 @@ def _sys_stats_text() -> str:
         log(f"⚠️ статистика системы: {e}")
         return "CPU/RAM н/д"
 
+from core.logger import get_logger as _get_logger
+_ui_log = _get_logger("ui")
+
+
 def log(msg):
     print(msg)
+    _ui_log.info(msg)
     f = _open_log()
     if f is None:
         return
@@ -241,7 +257,7 @@ def log(msg):
             f.write(msg + "\n")
             f.flush()
         except Exception:
-            log("Import/submodule load skipped — continuing without it")
+            pass
 
 
 from core import action_journal

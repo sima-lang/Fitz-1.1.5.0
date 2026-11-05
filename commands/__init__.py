@@ -8,10 +8,10 @@ from datetime import datetime
 from . import (
     system, files, power, music, security,
     internet, ai, extra, tasks, vision_commands,
-    apps, media, screen, dj,
+    apps, media, dj,
 )
 from core.logger import get_logger
-_log = get_logger("__init__")
+_mod_log = get_logger("__init__")
 
 
 def _log(msg: str):
@@ -21,7 +21,7 @@ def _log(msg: str):
         with open("logs/commands.log", "a", encoding="utf-8") as f:
             f.write(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}\n")
     except Exception:
-        _log.debug("пропущено в commands/__init__.py (строка 24)")
+        _mod_log.debug("пропущено в commands/__init__.py (строка 24)")
 
 
 HANDLERS = [
@@ -59,7 +59,7 @@ def handle(text, memory, core):
             except Exception as e:
                 _log(f"ERR DLC: {e!r}")
     except Exception:
-        _log.debug("пропущено в commands/__init__.py (строка 62)")
+        _mod_log.debug("пропущено в commands/__init__.py (строка 62)")
 
     _log(f"MISS: «{text[:80]}»")
     return None

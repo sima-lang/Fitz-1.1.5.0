@@ -2,6 +2,8 @@
 system.py — Системные команды: время, дата, мониторинг, диски, процессы, окна, дневник.
 Кроссплатформенно (psutil + time + platform). Окна — Linux через GNOME Shell D-Bus (core/tools.window_control).
 """
+import json
+import os
 import time
 import platform
 import subprocess
@@ -24,6 +26,36 @@ def _run(cmd: list, timeout: float = 5) -> str:
         return ""
     except Exception as e:
         return str(e)
+
+
+def _search_chat_history(query: str, limit: int = 10) -> str:
+    path = os.path.join("data", "chat_history.json")
+    if not os.path.exists(path):
+        return "История чата пуста."
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            history = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        return f"⚠️ Не удалось прочитать историю: {e}"
+    hits = [m for m in history if query in str(m.get("text", "")).lower()]
+    if not hits:
+        return f"В истории нет совпадений по «{query}»."
+    out = [f"🔎 Найдено {len(hits)} по «{query}»" + (f", показываю последние {limit}:" if len(hits) > limit else ":")]
+    for m in hits[-limit:]:
+        who = "Ты" if m.get("is_user") else "Фитц"
+        out.append(f"• {who}: {str(m.get('text', ''))[:200]}")
+    return "\n".join(out)
+
+
+def _dir_size_mb(path: str) -> float:
+    total = 0
+    for root, _, files in os.walk(path):
+        for name in files:
+            try:
+                total += os.path.getsize(os.path.join(root, name))
+            except OSError:
+                pass
+    return total / (1024 * 1024)
 
 
 def handle(text, memory, core):
@@ -56,18 +88,31 @@ def handle(text, memory, core):
                 _log.debug("пропущено в commands/system.py (строка 57)")
         return "\n".join(lines)
 
-    # ===== МОНИТОРИНГ =====
+    # ===== МОНИТОРИНГ / СОСТОЯНИЕ ФИТЦА =====
     if low in ("мониторинг", "состояние", "статус системы"):
         if not psutil:
             return "⚠️ psutil не установлен"
         try:
             cpu = psutil.cpu_percent(interval=0.3)
             ram = psutil.virtual_memory()
-            return (f"🖥️ МОНИТОРИНГ:\n"
-                    f"━━━━━━━━━━━━━━━━━━\n"
-                    f"📊 ЦП: {cpu}%\n"
-                    f"🧠 ОЗУ: {ram.percent}% "
-                    f"({ram.used // 1024**3} ГБ / {ram.total // 1024**3} ГБ)")
+            lines = [
+                "🖥️ СОСТОЯНИЕ:",
+                "━━━━━━━━━━━━━━━━━━",
+                f"📊 ЦП: {cpu}%",
+                f"🧠 ОЗУ: {ram.percent}% "
+                f"({ram.used // 1024**3} ГБ / {ram.total // 1024**3} ГБ)",
+                f"🔑 API-ключ: {'задан' if os.getenv('API_KEY', '').strip() else 'не задан'}",
+                f"💾 data/: {_dir_size_mb(os.path.join('data')):.1f} МБ",
+            ]
+            try:
+                from commands import handle as _route
+                from dlc_loader import load_dlcs
+                if not hasattr(_route, "_dlc_handlers"):
+                    _route._dlc_handlers = load_dlcs()
+                lines.append(f"🧩 DLC: {len(_route._dlc_handlers)} обработчик(ов)")
+            except Exception:
+                lines.append("🧩 DLC: не загружен")
+            return "\n".join(lines)
         except Exception as e:
             return f"⚠️ Ошибка мониторинга: {e}"
 
@@ -140,6 +185,13 @@ def handle(text, memory, core):
             return "Какое окно развернуть?"
         from core.tools import window_control
         return window_control("maximize", target)
+
+    # ===== ПОИСК ПО ИСТОРИИ ЧАТА =====
+    if low in ("найди в истории", "поиск в истории"):
+        return "Что искать в истории?"
+    if low.startswith("найди в истории ") or low.startswith("поиск в истории "):
+        query = low.split("истории ", 1)[1].strip()
+        return _search_chat_history(query)
 
     # ===== ДНЕВНИК / ЧТО Я ДЕЛАЛ СЕГОДНЯ =====
     if low in ("дневник", "что я делал сегодня", "дневник за сегодня",

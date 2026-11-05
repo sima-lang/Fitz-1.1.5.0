@@ -72,7 +72,7 @@ def play_start():
     """Звук при старте Фитца."""
     engine = _init_pygame()
     if engine == "pygame":
-        import pygame
+        import pygame  # noqa: F401
         # Три восходящих тона
         _generate_tone(523, 0.10, 0.25)  # C5
         import time

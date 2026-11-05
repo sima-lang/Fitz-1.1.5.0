@@ -25,24 +25,9 @@ def handle(text, memory, core):
             "🌍 Проверка IP: ✅\n"
         )
 
-    # ===== АНТИ-ВОР (AntiTheft) =====
-    if low in ("статус антивора", "анти-вор", "анти вор"):
-        try:
-            from security.anti_theft import AntiTheft
-            from core.config import Config
-            at = AntiTheft(Config())
-            return at.get_status()
-        except Exception as e:
-            return f"⚠️ Ошибка: {e}"
-
-    if low in ("отчёт защиты", "кто стучался", "кто пытался"):
-        try:
-            from security.anti_theft import AntiTheft
-            from core.config import Config
-            at = AntiTheft(Config())
-            return at.get_report()
-        except Exception as e:
-            return f"⚠️ Ошибка: {e}"
+    # ===== АНТИ-ВОР: функция удалена (не было детектора вторжений) =====
+    if low in ("статус антивора", "анти-вор", "анти вор", "отчёт защиты", "кто стучался", "кто пытался"):
+        return "⚠️ Анти-вор отключён: модуль не обнаруживал вторжений и удалён."
 
     # ===== БЛОКИРОВКА ПК =====
     if low in ("заблокируй пк", "блокировка"):

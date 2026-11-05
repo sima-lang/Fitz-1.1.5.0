@@ -3,6 +3,7 @@ config.py — конфигурация Фитца 1.1.5.0
 Хранит настройки в data/config.json. Кроссплатформенный.
 """
 import json
+from core.utils import atomic_write_json
 import os
 from . import os_layer
 
@@ -72,8 +73,7 @@ class Config:
 
     def save(self):
         try:
-            with open(self.path, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, indent=2, ensure_ascii=False)
+            atomic_write_json(self.path, self.data)
         except Exception as e:
             print(f"⚠️ Не удалось сохранить config: {e}")
 

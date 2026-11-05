@@ -2,6 +2,7 @@
 ui/chat.py — Виджет чата с пузырями, анимацией и индикатором «печатает...».
 """
 import json
+from core.utils import atomic_write_json
 from datetime import datetime
 from pathlib import Path
 
@@ -226,7 +227,6 @@ class ChatWidget(QWidget):
                                 is_user = (sender == "Ты")
                                 history.append({"sender": sender, "text": text, "is_user": is_user})
             CHAT_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with open(CHAT_HISTORY_FILE, "w", encoding="utf-8") as f:
-                json.dump(history, f, ensure_ascii=False, indent=2)
+            atomic_write_json(str(CHAT_HISTORY_FILE), history)
         except Exception as e:
             print(f"⚠️ Ошибка сохранения истории: {e}")

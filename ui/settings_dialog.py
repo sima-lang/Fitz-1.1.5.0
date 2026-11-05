@@ -3,6 +3,7 @@ ui/settings_dialog.py — Расширенное окно настроек Фи�
 Вкладки: Внешний вид, Haru, Поведение, Зрение, Майнкрафт, API, О программе.
 """
 import json
+from core.utils import atomic_write_json
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -13,6 +14,7 @@ from PyQt6.QtWidgets import (
     QGroupBox
 )
 from PyQt6.QtGui import QColor
+from core.version import __version__
 from core.logger import get_logger
 _log = get_logger("settings_dialog")
 
@@ -83,8 +85,7 @@ def load_settings():
 
 def save_settings(settings: dict):
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-        json.dump(settings, f, ensure_ascii=False, indent=2)
+    atomic_write_json(str(SETTINGS_FILE), settings)
 
 
 class SettingsDialog(QDialog):
@@ -97,7 +98,7 @@ class SettingsDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("⚙️ Настройки Фитца 1.1.5.0")
+        self.setWindowTitle(f"⚙️ Настройки Фитца {__version__}")
         self.resize(620, 640)
         self.setStyleSheet("background-color: #0a0a0f; color: #e0e0e0;")
 
@@ -488,7 +489,7 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(w)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        lbl = QLabel("🛡️ Фитц 1.1.5.0\n\nТвой цифровой спутник.")
+        lbl = QLabel(f"🛡️ Фитц {__version__}\n\nТвой цифровой спутник.")
         lbl.setStyleSheet("font-size: 14px; color: #00d4ff; text-align: center;")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(lbl)

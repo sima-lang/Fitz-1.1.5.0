@@ -7,6 +7,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
-      - run: pip install pytest pyflakes PyQt6
-      - run: python -m pyflakes $(git ls-files "*.py" | grep -v Fitz.AppDir)
+      - run: pip install pytest ruff PyQt6
+      - run: ruff check --select F401,F811,F841 $(git ls-files "*.py" | grep -v Fitz.AppDir)
       - run: QT_QPA_PLATFORM=offscreen python -m pytest test_fitz.py -v

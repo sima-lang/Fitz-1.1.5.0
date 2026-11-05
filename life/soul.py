@@ -5,6 +5,7 @@ soul.py — Характер, настроение, энергия Фитца.
 """
 import os
 import json
+from core.utils import atomic_write_json
 import random
 from datetime import datetime
 from core.logger import get_logger
@@ -68,8 +69,7 @@ class Soul:
     def save(self):
         try:
             self.data["last_interaction"] = datetime.now().isoformat()
-            with open(self.path, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, indent=2, ensure_ascii=False)
+            atomic_write_json(self.path, self.data)
         except Exception:
             _log.debug("пропущено в life/soul.py (строка 58)")
 

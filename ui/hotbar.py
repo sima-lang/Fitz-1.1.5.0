@@ -4,6 +4,7 @@ ui/hotbar.py — Верхняя панель с кнопками.
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton
 from ui.theme import get_theme
+from core.version import __version__
 
 
 class Hotbar(QWidget):
@@ -22,7 +23,7 @@ class Hotbar(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(5)
 
-        self.title = QLabel("🛡️ ФИТЦ 1.1.5.0")
+        self.title = QLabel(f"🛡️ ФИТЦ {__version__}")
         self.layout.addWidget(self.title)
         self.layout.addStretch()
 

@@ -3,6 +3,7 @@ ui/loading_screen.py — Живой экран загрузки с фразам�
 """
 import random
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
+from core.version import __version__
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QGraphicsOpacityEffect
 )
@@ -66,7 +67,7 @@ class LoadingScreen(QWidget):
         self.logo_anim.start()
 
         # Название
-        title = QLabel("ФИТЦ 1.1.5.0")
+        title = QLabel(f"ФИТЦ {__version__}")
         title.setStyleSheet("""
             color: #00d4ff; font-size: 48px; font-weight: bold;
             font-family: Arial; letter-spacing: 5px;

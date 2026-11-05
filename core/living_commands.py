@@ -13,7 +13,7 @@ from datetime import datetime
 
 from commands import handle as handle_command
 from core.logger import get_logger
-_log = get_logger("living_commands")
+_mod_log = get_logger("living_commands")
 
 
 # Команды, которые НЕ надо пересказывать через ИИ (быстрые)
@@ -35,7 +35,7 @@ def _log(msg: str):
         with open("logs/commands.log", "a", encoding="utf-8") as f:
             f.write(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}\n")
     except Exception:
-        _log.debug("пропущено в core/living_commands.py (строка 48)")
+        _mod_log.debug("пропущено в core/living_commands.py (строка 48)")
 
 
 def _is_fast(text: str) -> bool:
