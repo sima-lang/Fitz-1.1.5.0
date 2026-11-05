@@ -23,6 +23,10 @@ _thread = None
 _guardian_stop = threading.Event()
 _guardian_thread = None
 
+_idle_stop = threading.Event()
+_idle_thread = None
+IDLE_POLL_SEC = 30
+
 
 def _loop(interval: int) -> None:
     _log.info("планировщик запущен, интервал %s с", interval)
@@ -91,3 +95,45 @@ def stop_guardian() -> None:
 
 def is_guardian_running() -> bool:
     return bool(_guardian_thread and _guardian_thread.is_alive())
+
+
+# ----------------------------------------------------------------------
+# Триггер простоя для Task Runner (этап 4)
+# ----------------------------------------------------------------------
+def _idle_loop(poll_sec: int) -> None:
+    from core import idle
+    _log.info("детектор простоя запущен, порог %s с", idle.IDLE_THRESHOLD_SEC)
+    ran_this_idle = False
+    while not _idle_stop.is_set():
+        try:
+            if autonomy.is_enabled() and idle.detect_idle():
+                if not ran_this_idle:
+                    ran_this_idle = True
+                    autonomy.run_task()
+            else:
+                ran_this_idle = False
+        except Exception as e:
+            _log.error("ошибка детектора простоя: %r", e)
+        _idle_stop.wait(poll_sec)
+    _log.info("детектор простоя остановлен")
+
+
+def start_idle(poll_sec: int = IDLE_POLL_SEC) -> bool:
+    """Запускает детектор простоя в фоне. Возвращает False, если уже запущен."""
+    global _idle_thread
+    if _idle_thread and _idle_thread.is_alive():
+        return False
+    _idle_stop.clear()
+    _idle_thread = threading.Thread(
+        target=_idle_loop, args=(poll_sec,), name="autonomy-idle", daemon=True,
+    )
+    _idle_thread.start()
+    return True
+
+
+def stop_idle() -> None:
+    _idle_stop.set()
+
+
+def is_idle_running() -> bool:
+    return bool(_idle_thread and _idle_thread.is_alive())

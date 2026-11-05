@@ -910,6 +910,203 @@ class TestAutonomy(unittest.TestCase):
         self.assertEqual(self.autonomy._pending_confirm["action"], "reboot")
 
 
+class TestTaskRunner(unittest.TestCase):
+    """Task Runner: разбор целей, белый список шагов, выполнение без сети."""
+
+    def test_fallback_plan_ends_with_write_plan(self):
+        from core import task_runner
+        steps = task_runner._fallback_steps("улучши свой код PyQt6")
+        self.assertEqual(steps[-1]["tool"], "write_plan")
+        self.assertTrue(all(s["tool"] in task_runner.ALLOWED_TOOLS for s in steps))
+
+    def test_validate_drops_unknown_tools(self):
+        from core import task_runner
+        raw = [{"tool": "delete_file", "arg": "x"}, {"tool": "write_plan", "arg": "ok"}, "junk"]
+        self.assertEqual(task_runner._validate_steps(raw), [{"tool": "write_plan", "arg": "ok"}])
+
+    def test_validate_caps_steps(self):
+        from core import task_runner
+        raw = [{"tool": "write_plan", "arg": str(i)} for i in range(50)]
+        self.assertEqual(len(task_runner._validate_steps(raw)), task_runner.MAX_STEPS)
+
+    def test_parse_goal_uses_api_when_valid(self):
+        from unittest.mock import MagicMock
+        from core import task_runner
+        api = MagicMock(enabled=True)
+        api.ask.return_value = '[{"tool": "search_web", "arg": "PyQt6"}]'
+        self.assertEqual(task_runner.parse_goal("цель", api=api),
+                         [{"tool": "search_web", "arg": "PyQt6"}])
+
+    def test_parse_goal_falls_back_on_bad_api_answer(self):
+        from unittest.mock import MagicMock
+        from core import task_runner
+        api = MagicMock(enabled=True)
+        api.ask.return_value = "не json вообще"
+        steps = task_runner.parse_goal("улучши код", api=api)
+        self.assertEqual(steps[-1]["tool"], "write_plan")
+
+    def test_run_steps_isolates_failures(self):
+        from core import task_runner
+        from unittest.mock import patch
+        with patch.dict(task_runner.ALLOWED_TOOLS, {
+            "search_web": lambda a: {"ok": False, "error": "сеть"},
+            "write_plan": lambda a: {"ok": True, "file": "x.md"},
+        }):
+            results = task_runner.run_steps([
+                {"tool": "search_web", "arg": "a"},
+                {"tool": "write_plan", "arg": "b"},
+            ])
+        self.assertFalse(results[0]["ok"])
+        self.assertTrue(results[1]["ok"])
+
+
+class TestAgentTools(unittest.TestCase):
+    """Инструменты агента: пути только в data/plans и projects; без сети."""
+
+    def test_writable_only_plans_and_projects(self):
+        from core import agent_tools
+        self.assertIsNotNone(agent_tools.safe_write_path(agent_tools.PLANS_DIR / "a.md"))
+        self.assertIsNotNone(agent_tools.safe_write_path(agent_tools.PROJECTS_DIR / "x.py"))
+        self.assertIsNone(agent_tools.safe_write_path(Path("/etc/passwd")))
+        self.assertIsNone(agent_tools.safe_write_path(agent_tools.PLANS_DIR / ".." / ".." / "x.md"))
+
+    def test_write_plan_saves_md(self):
+        import tempfile
+        from core import agent_tools
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(agent_tools, "PLANS_DIR", Path(tmp)), \
+                 patch.object(agent_tools, "WRITABLE_ROOTS", (Path(tmp),)):
+                res = agent_tools.write_plan("# План\n- шаг", title="тест")
+                self.assertTrue(res["ok"])
+                self.assertTrue(Path(res["file"]).suffix == ".md")
+                self.assertIn("шаг", Path(res["file"]).read_text(encoding="utf-8"))
+
+    def test_write_plan_rejects_empty(self):
+        from core import agent_tools
+        self.assertFalse(agent_tools.write_plan("   ")["ok"])
+
+    def test_search_without_network_returns_error(self):
+        from core import agent_tools
+        from unittest.mock import patch
+        with patch("core.agent_tools.urlopen", side_effect=OSError("нет сети")):
+            res = agent_tools.search_web_saved("PyQt6")
+        self.assertFalse(res["ok"])
+
+    def test_youtube_without_library_is_honest_error(self):
+        from core import agent_tools
+        import builtins
+        from unittest.mock import patch
+        real_import = builtins.__import__
+
+        def fake_import(name, *a, **k):
+            if name == "youtube_transcript_api":
+                raise ImportError("нет")
+            return real_import(name, *a, **k)
+
+        with patch("builtins.__import__", side_effect=fake_import):
+            res = agent_tools.read_youtube_transcript("https://youtu.be/abc123")
+        self.assertFalse(res["ok"])
+        self.assertIn("youtube-transcript-api", res["error"])
+
+    def test_youtube_rejects_foreign_url(self):
+        from core import agent_tools
+        self.assertFalse(agent_tools.read_youtube_transcript("https://evil.com/?v=1")["ok"])
+
+
+class TestIdle(unittest.TestCase):
+    """Детектор простоя: порог 2 минуты, неизвестный статус не считается простоем."""
+
+    def test_parse_gdbus_output(self):
+        from core import idle
+        self.assertEqual(idle.parse_idletime_ms("(uint64 40053,)"), 40053)
+        self.assertIsNone(idle.parse_idletime_ms("ошибка"))
+
+    def test_threshold_two_minutes(self):
+        from core import idle
+        from unittest.mock import patch
+        self.assertEqual(idle.IDLE_THRESHOLD_SEC, 120)
+        with patch.object(idle, "get_idle_ms", return_value=130_000):
+            self.assertTrue(idle.detect_idle())
+        with patch.object(idle, "get_idle_ms", return_value=60_000):
+            self.assertFalse(idle.detect_idle())
+
+    def test_unknown_status_is_not_idle(self):
+        from core import idle
+        from unittest.mock import patch
+        with patch.object(idle, "get_idle_ms", return_value=None):
+            self.assertFalse(idle.detect_idle())
+
+
+class TestTaskQueue(unittest.TestCase):
+    """Очередь автономного агента: постановка, выполнение только при включённом режиме."""
+
+    def setUp(self):
+        import tempfile
+        from core import autonomy
+        self.autonomy = autonomy
+        self._tmp = tempfile.mkdtemp()
+        self._orig = (autonomy.DATA_DIR, autonomy.SCHEDULE_FILE, autonomy.JOURNAL_FILE)
+        autonomy.DATA_DIR = Path(self._tmp)
+        autonomy.SCHEDULE_FILE = Path(self._tmp) / "autonomy.json"
+        autonomy.JOURNAL_FILE = Path(self._tmp) / "autonomy.log"
+
+    def tearDown(self):
+        import shutil
+        a = self.autonomy
+        a.DATA_DIR, a.SCHEDULE_FILE, a.JOURNAL_FILE = self._orig
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_enqueue_adds_queued_goal(self):
+        self.autonomy.enqueue_task("улучши код")
+        queue = self.autonomy.load_state()["queue"]
+        self.assertEqual(queue[0]["status"], "queued")
+        self.assertEqual(queue[0]["goal"], "улучши код")
+
+    def test_enqueue_rejects_empty_and_caps_queue(self):
+        self.assertIn("Не понял", self.autonomy.enqueue_task("  "))
+        for i in range(self.autonomy.MAX_QUEUE):
+            self.autonomy.enqueue_task(f"цель {i}")
+        self.assertIn("полна", self.autonomy.enqueue_task("лишняя"))
+
+    def test_run_task_does_nothing_when_disabled(self):
+        from unittest.mock import patch
+        self.autonomy.enqueue_task("цель")
+        with patch("core.task_runner.run_task") as rt:
+            self.assertIsNone(self.autonomy.run_task())
+        self.assertFalse(rt.called)
+
+    def test_run_task_executes_queued_goal_and_marks_done(self):
+        from unittest.mock import patch
+        self.autonomy.set_enabled(True)
+        self.autonomy.enqueue_task("цель")
+        with patch("core.task_runner.run_task", return_value={"ok": 1, "steps": 1}) as rt:
+            summary = self.autonomy.run_task()
+        rt.assert_called_once()
+        self.assertEqual(summary["ok"], 1)
+        self.assertEqual(self.autonomy.load_state()["queue"][0]["status"], "done")
+
+    def test_failed_task_is_marked_failed(self):
+        from unittest.mock import patch
+        self.autonomy.set_enabled(True)
+        self.autonomy.enqueue_task("цель")
+        with patch("core.task_runner.run_task", return_value={"ok": 0, "steps": 2}):
+            self.autonomy.run_task()
+        self.assertEqual(self.autonomy.load_state()["queue"][0]["status"], "failed")
+
+    def test_night_command_enqueues_task(self):
+        from commands import autonomy_cmd
+        reply = autonomy_cmd.handle("задача на ночь: улучши код", None, None)
+        self.assertIn("в очередь", reply)
+        self.assertEqual(self.autonomy.load_state()["queue"][0]["goal"], "улучши код")
+
+    def test_task_never_runs_dangerous_tools(self):
+        from core import task_runner
+        self.assertNotIn("shutdown", task_runner.ALLOWED_TOOLS)
+        self.assertNotIn("reboot", task_runner.ALLOWED_TOOLS)
+        self.assertNotIn("delete", " ".join(task_runner.ALLOWED_TOOLS))
+
+
 class TestVersion1201(unittest.TestCase):
     def test_version_is_1_2_0_1(self):
         from core.version import __version__

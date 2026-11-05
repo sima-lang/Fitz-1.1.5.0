@@ -89,6 +89,60 @@ def stop() -> str:
 
 
 # ----------------------------------------------------------------------
+# Очередь задач Task Runner (этап 3)
+# ----------------------------------------------------------------------
+MAX_QUEUE = 10
+
+
+def enqueue_task(goal: str) -> str:
+    """Ставит цель в очередь. Выполнится при простое, если режим включён."""
+    goal = (goal or "").strip()
+    if not goal:
+        return "Не понял, какую задачу поставить."
+    state = load_state()
+    queue = state.get("queue", [])
+    if len(queue) >= MAX_QUEUE:
+        return f"Очередь полна ({MAX_QUEUE}). Дождись выполнения задач."
+    queue.append({"goal": goal[:500], "status": "queued"})
+    state["queue"] = queue
+    save_state(state)
+    _journal(f"задача в очереди: {goal[:120]}")
+    return "Задача поставлена в очередь. Выполню, когда ты будешь неактивен, и автономность включена."
+
+
+def run_task(goal: str | None = None, api=None) -> dict | None:
+    """
+    Точка входа Task Runner. Берёт задачу из очереди (или goal), выполняет по шагам.
+    Работает только при включённой автономности. Возвращает сводку или None.
+    """
+    if not is_enabled():
+        return None
+    state = load_state()
+    if goal is None:
+        queue = state.get("queue", [])
+        item = next((q for q in queue if q.get("status") == "queued"), None)
+        if item is None:
+            return None
+        goal = item["goal"]
+        item["status"] = "running"
+        save_state(state)
+    from core import task_runner
+    try:
+        summary = task_runner.run_task(goal, api=api)
+    except Exception as e:
+        _log.error("задача упала: %r", e)
+        summary = {"goal": goal, "steps": 0, "ok": 0, "error": repr(e)}
+    if goal is not None:
+        state = load_state()
+        for q in state.get("queue", []):
+            if q.get("goal") == goal and q.get("status") == "running":
+                q["status"] = "done" if summary.get("ok") else "failed"
+        save_state(state)
+    _journal(f"задача выполнена: {goal[:80]} — шагов ok {summary.get('ok', 0)}/{summary.get('steps', 0)}")
+    return summary
+
+
+# ----------------------------------------------------------------------
 # Журнал
 # ----------------------------------------------------------------------
 def _journal(message: str) -> None:

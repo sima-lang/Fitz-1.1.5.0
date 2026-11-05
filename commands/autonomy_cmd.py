@@ -6,6 +6,13 @@ commands/autonomy_cmd.py — команды управления автоном�
 """
 from core import autonomy
 
+_TASK_PREFIXES = ("задача на ночь:", "задача на ночь ", "задача:")
+
 
 def handle(text, memory, core):
+    low = text.lower().strip()
+    for prefix in _TASK_PREFIXES:
+        if low.startswith(prefix):
+            goal = text.strip()[len(prefix):].strip()
+            return autonomy.enqueue_task(goal)
     return autonomy.handle_stop_command(text)

@@ -511,6 +511,13 @@ class FitzApp(QMainWindow):
             except Exception as e:
                 log(f"Пропущено: не удалось запустить сторожа автономности ({e}); продолжаю работу")
 
+            # Детектор простоя для Task Runner (этап 4): запускает задачи из очереди, если автономность включена
+            try:
+                from life import scheduler as _scheduler
+                _scheduler.start_idle()
+            except Exception as e:
+                log(f"Пропущено: не удалось запустить детектор простоя ({e}); продолжаю работу")
+
             self.brain.soul = self.soul
             self.brain.awareness = self.awareness
             self.brain.voice = self.voice
