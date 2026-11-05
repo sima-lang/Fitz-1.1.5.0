@@ -17,3 +17,4 @@ dist/
 *.AppImage
 *.deb
 *.bak*
+backup_*.tar.gz
