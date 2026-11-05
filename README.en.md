@@ -226,3 +226,8 @@ If your problem is not listed, check `data/fitz.log` and `data/ui.log` and inclu
 
 **Not done**
 - `CHANGELOG.md`, streaming answers, confirmation before closing several windows, an import smoke test in CI, a manual GUI run.
+
+## License
+
+This project is released under the MIT License. The full text is in [LICENSE](LICENSE).
+The detailed list of changes for this version is in [CHANGELOG.md](CHANGELOG.md).

@@ -18,3 +18,8 @@ dist/
 *.deb
 *.bak*
 backup_*.tar.gz
+
+# Локальные резервные копии и служебные файлы сборки
+backup_before_audit/
+Fitz.spec
+godot_client/.godot/
