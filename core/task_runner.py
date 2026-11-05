@@ -21,6 +21,9 @@ ALLOWED_TOOLS = {
     "write_plan": lambda arg: agent_tools.write_plan(arg, title="plan"),
 }
 
+# Эмуляция ввода. Работает ТОЛЬКО при emulation_enabled=True и через подтверждение «да».
+EMULATION_TOOLS = ("click_at", "type_text", "press_key")
+
 MAX_STEPS = 8
 
 
@@ -98,3 +101,31 @@ def run_task(goal: str, api=None) -> dict:
     results = run_steps(steps)
     ok = sum(1 for r in results if r.get("ok"))
     return {"goal": goal, "steps": len(steps), "ok": ok, "results": results}
+
+
+def run_cycle(goal: str, api=None) -> dict:
+    """
+    Цикл выполнения задачи: разбор → шаги по очереди → отчёт в data/autonomy.log.
+    Эмуляция ввода отклоняется без emulation_enabled. Возвращает сводку.
+    """
+    from core import autonomy
+    steps = parse_goal(goal, api=api)
+    autonomy._journal(f"ЦИКЛ старт: «{goal[:80]}», шагов {len(steps)}")
+    results = []
+    for i, step in enumerate(steps, 1):
+        tool = step["tool"]
+        if tool in EMULATION_TOOLS:
+            res = {"ok": False, "error": "эмуляция выключена"} if not autonomy.is_emulation_enabled() \
+                else _run_emulation(tool, step["arg"])
+        else:
+            res = run_steps([step])[0]
+        results.append({"step": i, "tool": tool, **res})
+        autonomy._journal(f"ЦИКЛ шаг {i} {tool}: {'ok' if res.get('ok') else res.get('error')}")
+    ok = sum(1 for r in results if r.get("ok"))
+    autonomy._journal(f"ЦИКЛ отчёт: {ok}/{len(steps)} шагов ok")
+    return {"goal": goal, "steps": len(steps), "ok": ok, "results": results}
+
+
+def _run_emulation(tool: str, arg: str) -> dict:
+    from core import agent_tools
+    return agent_tools.emulate(tool, arg)

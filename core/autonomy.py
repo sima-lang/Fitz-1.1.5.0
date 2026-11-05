@@ -248,7 +248,34 @@ DANGEROUS_ACTIONS = {
     "reboot": "перезагрузить ПК",
     "delete_outside_project": "удалить файлы вне папки проекта",
     "send_external": "отправить сообщение наружу",
+    "sleep_pc": "усыпить ПК",
+    "click_at": "кликнуть мышью по экрану",
+    "type_text": "напечатать текст",
+    "press_key": "нажать клавишу",
 }
+
+
+# ----------------------------------------------------------------------
+# Эмуляция ввода: флаг по умолчанию выключен
+# ----------------------------------------------------------------------
+def is_emulation_enabled() -> bool:
+    return bool(load_state().get("emulation_enabled", False))
+
+
+def set_emulation(value: bool) -> None:
+    state = load_state()
+    state["emulation_enabled"] = bool(value)
+    save_state(state)
+    _journal("эмуляция " + ("включена" if value else "выключена"))
+
+
+def sleep_pc() -> str:
+    """Усыпление ПК: только через подтверждение, и только при включённой автономности и пустой очереди."""
+    if not is_enabled():
+        return "Автономность выключена — усыпление не выполняю."
+    if any(q.get("status") == "queued" for q in load_state().get("queue", [])):
+        return "В очереди есть задачи — усыпление отложено."
+    return request_dangerous_action("sleep_pc")["question"]
 
 # Разрешённые приложения для launch_app. Совпадают с ключами словаря apps в core/tools.open_app.
 ALLOWED_APPS = (
@@ -331,6 +358,21 @@ def execute_confirmed(action: str, arg: str = "") -> str:
             return f"Приложение «{arg}» не в списке разрешённых. Не запускаю."
         from core.tools import open_app
         result = open_app(arg)
+    elif action == "sleep_pc":
+        import subprocess
+        try:
+            r = subprocess.run(["systemctl", "suspend"], capture_output=True, text=True, timeout=15)
+        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+            result = f"⚠️ Не удалось усыпить ПК: {e}"
+        else:
+            result = "💤 Усыпляю ПК." if r.returncode == 0 else f"⚠️ Не удалось: {(r.stderr or r.stdout).strip()[:200]}"
+    elif action in ("click_at", "type_text", "press_key"):
+        from core import agent_tools
+        res = agent_tools.emulate(action, arg)
+        if not res.get("ok"):
+            _journal(f"ЭМУЛЯЦИЯ ОТКЛОНЕНА «{action}»: {res.get('error') or res.get('result')}")
+            return f"Эмуляция не выполнена: {res.get('error') or res.get('result')}"
+        result = res["result"]
     else:
         _journal(f"НЕ ВЫПОЛНЕНО: исполнитель для «{action}» не подключён")
         return f"Исполнитель для «{DANGEROUS_ACTIONS.get(action, action)}» ещё не подключён."

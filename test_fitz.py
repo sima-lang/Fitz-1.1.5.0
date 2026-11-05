@@ -1107,6 +1107,102 @@ class TestTaskQueue(unittest.TestCase):
         self.assertNotIn("delete", " ".join(task_runner.ALLOWED_TOOLS))
 
 
+class TestEmulationAndSleep(unittest.TestCase):
+    """Эмуляция ввода и сон ПК: только с флагом и подтверждением, без реального ввода в тестах."""
+
+    def setUp(self):
+        import tempfile
+        from core import autonomy
+        self.autonomy = autonomy
+        self._tmp = tempfile.mkdtemp()
+        self._orig = (autonomy.DATA_DIR, autonomy.SCHEDULE_FILE, autonomy.JOURNAL_FILE)
+        autonomy.DATA_DIR = Path(self._tmp)
+        autonomy.SCHEDULE_FILE = Path(self._tmp) / "autonomy.json"
+        autonomy.JOURNAL_FILE = Path(self._tmp) / "autonomy.log"
+        autonomy._pending_confirm.clear()
+
+    def tearDown(self):
+        import shutil
+        a = self.autonomy
+        a.DATA_DIR, a.SCHEDULE_FILE, a.JOURNAL_FILE = self._orig
+        a._pending_confirm.clear()
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_emulation_disabled_by_default(self):
+        self.assertFalse(self.autonomy.is_emulation_enabled())
+
+    def test_click_at_blocked_without_flag_and_never_calls_ydotool(self):
+        from unittest.mock import patch
+        from core import agent_tools
+        with patch("core.tools.click_at") as ck:
+            res = agent_tools.emulate("click_at", "10,20")
+        self.assertFalse(res["ok"])
+        self.assertIn("выключена", res["error"])
+        self.assertFalse(ck.called)
+
+    def test_click_at_runs_with_flag_when_mocked(self):
+        from unittest.mock import patch
+        from core import agent_tools
+        self.autonomy.set_emulation(True)
+        with patch("core.tools.click_at", return_value="🖱️ Клик") as ck:
+            res = agent_tools.emulate("click_at", "10,20")
+        ck.assert_called_once_with("10", "20")
+        self.assertTrue(res["ok"])
+
+    def test_click_at_rejects_bad_coordinates(self):
+        from core import agent_tools
+        self.autonomy.set_emulation(True)
+        res = agent_tools.emulate("click_at", "abc")
+        self.assertFalse(res["ok"])
+
+    def test_emulation_requires_confirmation(self):
+        from unittest.mock import patch
+        self.autonomy.set_emulation(True)
+        with patch("core.tools.click_at") as ck:
+            r = self.autonomy.request_dangerous_action("click_at", "10,20")
+            self.assertTrue(r["needs_confirm"])
+            self.assertFalse(ck.called, "до «да» клика быть не должно")
+
+    def test_sleep_refused_when_autonomy_off(self):
+        self.assertIn("выключена", self.autonomy.sleep_pc())
+
+    def test_sleep_refused_when_queue_not_empty(self):
+        self.autonomy.set_enabled(True)
+        self.autonomy.enqueue_task("цель")
+        self.assertIn("отложено", self.autonomy.sleep_pc())
+
+    def test_sleep_asks_confirmation_when_allowed(self):
+        self.autonomy.set_enabled(True)
+        reply = self.autonomy.sleep_pc()
+        self.assertIn("Подтверждаешь", reply)
+        self.assertTrue(self.autonomy.has_pending_confirm())
+
+    def test_sleep_does_not_run_systemctl_before_yes(self):
+        from unittest.mock import patch
+        self.autonomy.set_enabled(True)
+        with patch("subprocess.run") as sr:
+            self.autonomy.sleep_pc()
+        self.assertFalse(sr.called)
+
+    def test_emulation_commands_toggle_flag(self):
+        from commands import autonomy_cmd
+        autonomy_cmd.handle("включи эмуляцию", None, None)
+        self.assertTrue(self.autonomy.is_emulation_enabled())
+        autonomy_cmd.handle("выключи эмуляцию", None, None)
+        self.assertFalse(self.autonomy.is_emulation_enabled())
+
+    def test_run_cycle_rejects_emulation_when_flag_off(self):
+        from unittest.mock import patch
+        from core import task_runner
+        steps = [{"tool": "click_at", "arg": "1,2"}]
+        with patch.object(task_runner, "parse_goal", return_value=steps), \
+             patch("core.tools.click_at") as ck:
+            summary = task_runner.run_cycle("клик")
+        self.assertFalse(ck.called)
+        self.assertEqual(summary["ok"], 0)
+        self.assertEqual(summary["results"][0]["error"], "эмуляция выключена")
+
+
 class TestVersion1201(unittest.TestCase):
     def test_version_is_1_2_0_1(self):
         from core.version import __version__

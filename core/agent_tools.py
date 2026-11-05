@@ -135,3 +135,30 @@ def write_plan(text: str, title: str = "plan") -> dict:
     target.write_text(text, encoding="utf-8")
     _log.info("план сохранён: %s", target.name)
     return {"ok": True, "file": str(target)}
+
+
+# ----------------------------------------------------------------------
+# 4. Эмуляция ввода (через core/tools, ydotool). Работает ТОЛЬКО при флаге emulation_enabled.
+# ----------------------------------------------------------------------
+def emulate(action: str, arg: str) -> dict:
+    """
+    Выполняет эмуляцию ввода. Проверка флага — здесь, до любого вызова ydotool.
+    action: click_at (arg = "x,y"), type_text (arg = текст), press_key (arg = клавиша).
+    """
+    from core import autonomy
+    if not autonomy.is_emulation_enabled():
+        return {"ok": False, "error": "эмуляция выключена"}
+    from core import tools
+    try:
+        if action == "click_at":
+            x, y = (v.strip() for v in arg.split(","))
+            res = tools.click_at(x, y)
+        elif action == "type_text":
+            res = tools.type_text(arg)
+        elif action == "press_key":
+            res = tools.press_key(arg)
+        else:
+            return {"ok": False, "error": f"неизвестная эмуляция: {action}"}
+    except ValueError:
+        return {"ok": False, "error": "неверные координаты (нужно «x,y»)"}
+    return {"ok": not str(res).startswith("⚠️"), "result": str(res)}

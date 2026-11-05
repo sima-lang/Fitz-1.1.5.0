@@ -11,6 +11,11 @@ _TASK_PREFIXES = ("задача на ночь:", "задача на ночь ", 
 
 def handle(text, memory, core):
     low = text.lower().strip()
+    if low in ("включи эмуляцию", "выключи эмуляцию"):
+        on = low.startswith("включи")
+        autonomy.set_emulation(on)
+        return ("Эмуляция ввода включена. Каждое нажатие будет требовать подтверждения «да»."
+                if on else "Эмуляция ввода выключена.")
     for prefix in _TASK_PREFIXES:
         if low.startswith(prefix):
             goal = text.strip()[len(prefix):].strip()

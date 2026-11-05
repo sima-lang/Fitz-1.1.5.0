@@ -651,6 +651,15 @@ class FitzApp(QMainWindow):
         """)
         main_layout.addWidget(self.status_bar)
 
+        # Лейбл «Статус»: что сейчас делает Фитц (автономный агент)
+        self.task_status = QLabel("Статус: ожидание")
+        self.task_status.setStyleSheet("""
+            QLabel { color: #00ff88; background-color: #12121a;
+                     font-family: monospace; font-size: 11px;
+                     padding: 2px 10px; }
+        """)
+        main_layout.addWidget(self.task_status)
+
         QShortcut(QKeySequence("Ctrl+Shift+F"), self, self._send_vision_command)
         QShortcut(QKeySequence("Ctrl+Shift+H"), self, self._toggle_haru)
         QShortcut(QKeySequence("Ctrl+Shift+M"), self, lambda: self._process("включи музыку"))
@@ -696,7 +705,28 @@ class FitzApp(QMainWindow):
         except Exception:
             log("Пропущено: не удалось запустить звук старта; продолжаю работу")
 
+    def _refresh_task_status(self):
+        """Лейбл «Статус»: что сейчас делает автономный агент. Вызывается таймером раз в 5 секунд."""
+        from core import autonomy
+        try:
+            state = autonomy.load_state()
+        except Exception:
+            return
+        queue = state.get("queue", [])
+        running = [q for q in queue if q.get("status") == "running"]
+        queued = [q for q in queue if q.get("status") == "queued"]
+        if running:
+            text = f"Статус: выполняю «{running[0]['goal'][:40]}»"
+        elif queued:
+            text = f"Статус: в очереди задач: {len(queued)}"
+        elif autonomy.is_enabled():
+            text = "Статус: автономность включена, жду простоя"
+        else:
+            text = "Статус: ожидание"
+        self.task_status.setText(text)
+
     def _update_status_bar(self):
+        self._refresh_task_status()
         api = "OK" if self._api_status and "✅" in self._api_status else "⚠️"
         vision = "ON" if getattr(self, "vision_timer", None) and self.vision_timer.isActive() else "OFF"
         haru = "ON" if getattr(self, "haru", None) and self.haru.isVisible() else "OFF"
