@@ -233,6 +233,9 @@ This project is released under the MIT License (see [LICENSE](LICENSE)).
 
 ### Haru model (Live2D)
 
+**The Haru model is not included in this repository.** Download it from https://www.live2d.com/download/sample-data/ and unpack it into the `live2d/` folder in the project root. Without it the Haru window stays empty; the rest of Fitz works.
+
+
 The Haru model is a **sample** by **Live2D Inc.** and is distributed under the Live2D license.
 - **Authors:** Live2D Inc. (illustration, modeling), 癒月 (voice).
 - **License:** [Live2D Sample Data License](https://www.live2d.com/download/sample-data/).

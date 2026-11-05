@@ -232,6 +232,9 @@ ruff check --select F401,F811,F821,F841 $(git ls-files '*.py' | grep -v Fitz.App
 
 ### Модель Haru (Live2D)
 
+**Модель Haru не входит в репозиторий.** Скачайте с https://www.live2d.com/download/sample-data/ и распакуйте в папку `live2d/` в корне проекта. Без неё окно Haru будет пустым, остальная часть Фитца работает.
+
+
 Модель Haru — это **сэмпл** от **Live2D Inc.**, распространяется по лицензии Live2D.
 - **Автор:** Live2D Inc. (иллюстрация, моделирование), 癒月 (голос).
 - **Лицензия:** [Live2D Sample Data License](https://www.live2d.com/download/sample-data/).

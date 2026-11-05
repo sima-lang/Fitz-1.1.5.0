@@ -23,3 +23,6 @@ backup_*.tar.gz
 backup_before_audit/
 Fitz.spec
 godot_client/.godot/
+
+# Модель Haru: лицензия Live2D не разрешает перераспространение, не публикуем
+live2d/
