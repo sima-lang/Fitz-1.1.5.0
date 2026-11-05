@@ -229,5 +229,16 @@ If your problem is not listed, check `data/fitz.log` and `data/ui.log` and inclu
 
 ## License
 
-This project is released under the MIT License. The full text is in [LICENSE](LICENSE).
+This project is released under the MIT License (see [LICENSE](LICENSE)).
+
+### Haru model (Live2D)
+
+The Haru model is a **sample** by **Live2D Inc.** and is distributed under the Live2D license.
+- **Authors:** Live2D Inc. (illustration, modeling), 癒月 (voice).
+- **License:** [Live2D Sample Data License](https://www.live2d.com/download/sample-data/).
+- **Use:** permitted for individual users and small businesses (subject to agreeing to the license).
+- **Medium and large businesses:** closed testing only.
+
+The model is not part of the project's MIT license.
+
 The detailed list of changes for this version is in [CHANGELOG.md](CHANGELOG.md).
