@@ -314,4 +314,4 @@ bot.on('health', () => {
   }
 })
 
-console.log(`🛡️ Фитц-бот 1.5.0 запущен: ${host}:${port} (${nick})`)
+console.log(`🛡️ Фитц-бот 1.1.5.0 запущен: ${host}:${port} (${nick})`)

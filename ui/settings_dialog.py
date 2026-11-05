@@ -1,5 +1,5 @@
 """
-ui/settings_dialog.py — Расширенное окно настроек Фитца 1.5.0.
+ui/settings_dialog.py — Расширенное окно настроек Фитца 1.1.5.0.
 Вкладки: Внешний вид, Haru, Поведение, Зрение, Майнкрафт, API, О программе.
 """
 import json
@@ -97,7 +97,7 @@ class SettingsDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("⚙️ Настройки Фитца 1.5.0")
+        self.setWindowTitle("⚙️ Настройки Фитца 1.1.5.0")
         self.resize(620, 640)
         self.setStyleSheet("background-color: #0a0a0f; color: #e0e0e0;")
 
@@ -488,7 +488,7 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(w)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        lbl = QLabel("🛡️ Фитц 1.5.0\n\nТвой цифровой спутник.")
+        lbl = QLabel("🛡️ Фитц 1.1.5.0\n\nТвой цифровой спутник.")
         lbl.setStyleSheet("font-size: 14px; color: #00d4ff; text-align: center;")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(lbl)

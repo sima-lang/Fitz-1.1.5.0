@@ -22,7 +22,7 @@ class Hotbar(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(5)
 
-        self.title = QLabel("🛡️ ФИТЦ 1.5.0")
+        self.title = QLabel("🛡️ ФИТЦ 1.1.5.0")
         self.layout.addWidget(self.title)
         self.layout.addStretch()
 

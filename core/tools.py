@@ -1,5 +1,5 @@
 """
-tools.py — Инструменты Senior-режима Фитца 1.5.0.
+tools.py — Инструменты Senior-режима Фитца 1.1.5.0.
 read_file, open_app, search_web, take_screenshot, play_music, window_control,
 write_file, generate_code, rewrite_file, run_command.
 """
