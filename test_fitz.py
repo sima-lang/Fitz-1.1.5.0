@@ -777,6 +777,30 @@ class TestAutonomy(unittest.TestCase):
         time.sleep(1.5)
         self.assertFalse(scheduler.is_running())
 
+    # ---- Автономность и запуск приложений ----
+    def test_open_steam_autonomy_on_launches_without_confirm(self):
+        from unittest.mock import patch
+        from commands import apps
+        with patch.object(self.autonomy, "is_enabled", return_value=True), \
+             patch.object(self.autonomy, "request_dangerous_action") as rda, \
+             patch("commands.apps._open_app", return_value="🚀 Запустил: steam") as oa:
+            reply = apps.handle("открой steam", None, None)
+        self.assertFalse(rda.called, "при автономности подтверждение запрашиваться не должно")
+        oa.assert_called_once_with("steam")
+        self.assertEqual(reply, "🚀 Запустил: steam")
+
+    def test_open_steam_autonomy_off_asks_confirm(self):
+        from unittest.mock import patch
+        from commands import apps
+        with patch.object(self.autonomy, "is_enabled", return_value=False), \
+             patch.object(self.autonomy, "request_dangerous_action",
+                          return_value={"question": "вопрос"}) as rda, \
+             patch("commands.apps._open_app") as oa:
+            reply = apps.handle("открой steam", None, None)
+        rda.assert_called_once_with("launch_app", "steam")
+        self.assertFalse(oa.called)
+        self.assertEqual(reply, "вопрос")
+
     # ---- Этап 2: Сторож ----
     def test_guardian_thresholds(self):
         self.assertEqual(self.autonomy.guardian_check({"cpu_percent": 95, "disk_percent": 50}),

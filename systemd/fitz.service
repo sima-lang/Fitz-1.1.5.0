@@ -1,0 +1,38 @@
+# systemd user-юнит для Фитца (этап 3: работа в фоне при закрытом окне).
+#
+# Установка (один раз):
+#   mkdir -p ~/.config/systemd/user
+#   cp systemd/fitz.service ~/.config/systemd/user/
+#   # Отредактируйте WorkingDirectory и ExecStart под вашу папку и Python,
+#   # если они отличаются от значений ниже.
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fitz
+#
+# Управление:
+#   systemctl --user status fitz      # состояние
+#   systemctl --user stop fitz        # остановить
+#   journalctl --user -u fitz -f      # логи
+#
+# Перезапуск при сбое: Restart=on-failure. Намеренная остановка (stop) не перезапускает.
+
+[Unit]
+Description=Фитц — ИИ-ассистент (фоновый режим)
+After=graphical-session.target
+PartOf=graphical-session.target
+# Не даём процессу бесконечно перезапускаться при постоянной ошибке
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ishira/Рабочий стол/fitz14
+ExecStart=/home/ishira/.pyenv/versions/3.12.6/bin/python3 ui_pyqt.py
+Restart=on-failure
+RestartSec=5
+# GUI нужен доступ к дисплею текущей сессии
+Environment=DISPLAY=:0
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+
+[Install]
+WantedBy=graphical-session.target

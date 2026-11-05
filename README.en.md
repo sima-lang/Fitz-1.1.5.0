@@ -116,6 +116,31 @@ python3 ui_pyqt.py
 
 Logs go to `data/fitz.log` (general), `data/voice.log`, `data/brain.log`, `data/ui.log` — per module.
 
+### Background mode (systemd, Linux only)
+
+Fitz can run as a user service: it starts when your graphical session begins and restarts on failure. The unit is in `systemd/fitz.service`.
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp systemd/fitz.service ~/.config/systemd/user/
+# If the project folder or Python differ, edit WorkingDirectory and ExecStart in the file
+systemctl --user daemon-reload
+systemctl --user enable --now fitz
+```
+
+Management:
+
+```bash
+systemctl --user status fitz     # status
+systemctl --user stop fitz       # stop
+systemctl --user disable fitz    # do not start at login
+journalctl --user -u fitz -f     # service logs
+```
+
+The service needs the display of your current session (the unit uses `DISPLAY=:0` and `WAYLAND_DISPLAY=wayland-0`). If your values differ, check them with `echo $DISPLAY $WAYLAND_DISPLAY` and edit the `Environment=` lines in the unit.
+
+To stop only the autonomous mode (the service keeps running), say "стоп автономность" or press the red ⏹ button.
+
 Building an executable: `build.py` / `build_exe.py` (PyInstaller) and `build_deb.sh`. Not verified on a clean system in this version.
 
 ## Commands

@@ -597,6 +597,22 @@ class FitzApp(QMainWindow):
         copy_btn.clicked.connect(self._copy_all)
         input_layout.addWidget(copy_btn)
 
+        stop_auto_btn = QPushButton("⏹")
+        stop_auto_btn.setFixedSize(40, 40)
+        stop_auto_btn.setToolTip("Остановить автономный режим")
+        stop_auto_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #cc2222; color: #ffffff;
+                border-radius: 8px; font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #ff3333;
+                border: 1px solid #ff6666;
+            }
+        """)
+        stop_auto_btn.clicked.connect(self._stop_autonomy)
+        input_layout.addWidget(stop_auto_btn)
+
         send_btn = QPushButton("➤")
         send_btn.setFixedSize(40, 40)
         send_btn.setStyleSheet("""
@@ -1442,6 +1458,12 @@ class FitzApp(QMainWindow):
             self.voice.listen_continuous(on_voice, wake_detector=self.wake)
         except Exception as e:
             log(f"❌ Ошибка в _voice_loop: {e}")
+
+    def _stop_autonomy(self):
+        """Красная кнопка ⏹: выключает автономный режим и сообщает в чат."""
+        from core import autonomy
+        reply = autonomy.stop()
+        self.add_message_signal.emit("🛡️ Фитц", reply, False)
 
     def _copy_all(self):
         text = self.chat.get_last_text()

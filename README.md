@@ -115,6 +115,31 @@ python3 ui_pyqt.py
 
 Логи пишутся в `data/fitz.log` (общий), `data/voice.log`, `data/brain.log`, `data/ui.log` — по модулям.
 
+### Фоновый режим (systemd, только Linux)
+
+Фитц можно запускать как пользовательскую службу: она стартует при входе в графическую сессию и перезапускается при сбое. Юнит лежит в `systemd/fitz.service`.
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp systemd/fitz.service ~/.config/systemd/user/
+# Если папка проекта или Python другие — поправьте WorkingDirectory и ExecStart в файле
+systemctl --user daemon-reload
+systemctl --user enable --now fitz
+```
+
+Управление:
+
+```bash
+systemctl --user status fitz     # состояние
+systemctl --user stop fitz       # остановить
+systemctl --user disable fitz    # не запускать при входе
+journalctl --user -u fitz -f     # логи службы
+```
+
+Для работы службы нужен дисплей текущей сессии (юнит использует `DISPLAY=:0` и `WAYLAND_DISPLAY=wayland-0`). Если у вас другие значения, проверьте их командой `echo $DISPLAY $WAYLAND_DISPLAY` и поправьте `Environment=` в юните.
+
+Остановить только автономный режим (служба продолжит работать) можно командой «стоп автономность» или красной кнопкой ⏹.
+
 Сборка исполняемого файла: `build.py` / `build_exe.py` (PyInstaller) и `build_deb.sh`. В этой версии не проверялись на чистой системе.
 
 ## Команды

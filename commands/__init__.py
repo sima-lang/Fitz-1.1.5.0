@@ -8,7 +8,7 @@ from datetime import datetime
 from . import (
     system, files, power, music, security,
     internet, ai, extra, tasks, vision_commands,
-    apps, media, dj,
+    apps, media, dj, autonomy_cmd,
 )
 from core.logger import get_logger
 _mod_log = get_logger("__init__")
@@ -25,6 +25,7 @@ def _log(msg: str):
 
 
 HANDLERS = [
+    autonomy_cmd.handle,  # «стоп автономность» перехватываем первой
     system.handle, apps.handle, media.handle,
     files.handle, power.handle, music.handle, security.handle,
     internet.handle, ai.handle, extra.handle, tasks.handle,
