@@ -1,5 +1,5 @@
 """
-ui_pyqt.py — Фитц 1.5.0 (Главное окно, сборка интерфейса, применение настроек) [v1.5.0]
+ui_pyqt.py — Фитц 1.1.5.0 (Главное окно, сборка интерфейса, применение настроек) [v1.1.5.0]
 """
 import os
 import sys
@@ -309,7 +309,7 @@ class FitzApp(QMainWindow):
         os.environ["DEEPSEEK_BASE_URL"] = os.getenv("API_URL", "https://api.provod.ai/v1")
         os.environ["DSH_HOME"] = os.path.expanduser("~/fitz_dsh_home")
 
-        self.setWindowTitle("🛡️ Фитц 1.5.0")
+        self.setWindowTitle("🛡️ Фитц 1.1.5.0")
         self.resize(1200, 800)
         self.setStyleSheet("QMainWindow { background-color: #0a0a0f; }")
 

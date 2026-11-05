@@ -1,5 +1,5 @@
 """
-build.py — Сборка Фитца 1.5.0 в .exe (Windows) / .bin (Linux).
+build.py — Сборка Фитца 1.1.5.0 в .exe (Windows) / .bin (Linux).
 Запуск: python build.py
 """
 import os
@@ -10,7 +10,7 @@ import shutil
 
 def build():
     print("=" * 60)
-    print("🛡️  СБОРКА ФИТЦА 1.5.0")
+    print("🛡️  СБОРКА ФИТЦА 1.1.5.0")
     print("=" * 60)
 
     # Очистка

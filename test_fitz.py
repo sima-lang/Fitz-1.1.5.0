@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-test_fitz.py — Автотесты для Фитца 1.5.0.
+test_fitz.py — Автотесты для Фитца 1.1.5.0.
 Запуск: python -m unittest test_fitz.py -v
 Без API-токенов (все вызовы замоканы).
 """

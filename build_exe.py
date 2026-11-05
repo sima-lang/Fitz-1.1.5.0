@@ -1,5 +1,5 @@
 """
-build_exe.py — Сборка Фитца 1.6.2 в fitz.exe (Windows).
+build_exe.py — Сборка Фитца 1.1.5.0 в fitz.exe (Windows).
 
 Зависимости: PyInstaller (pip install pyinstaller).
 Запуск:   python build_exe.py

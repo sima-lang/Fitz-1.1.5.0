@@ -1,4 +1,4 @@
-# requirements-windows.txt — Зависимости Фитца 1.6.2 для Windows
+# requirements-windows.txt — Зависимости Фитца 1.1.5.0 для Windows
 # Установка:  pip install -r requirements-windows.txt
 
 # Core

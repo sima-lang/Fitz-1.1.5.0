@@ -66,7 +66,7 @@ class LoadingScreen(QWidget):
         self.logo_anim.start()
 
         # Название
-        title = QLabel("ФИТЦ 1.5.0")
+        title = QLabel("ФИТЦ 1.1.5.0")
         title.setStyleSheet("""
             color: #00d4ff; font-size: 48px; font-weight: bold;
             font-family: Arial; letter-spacing: 5px;

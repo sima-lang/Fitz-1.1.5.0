@@ -43,7 +43,7 @@ cat > "$BUILD_DIR/usr/share/applications/fitz14.desktop" << 'INNER_EOF'
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Фитц 1.4
+Name=Фитц 1.1.5.0
 Comment=Digital Companion
 Exec=/opt/fitz14/run_fitz.sh
 Icon=/usr/share/icons/hicolor/256x256/apps/fitz14.png
