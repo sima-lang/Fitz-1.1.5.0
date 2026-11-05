@@ -10,8 +10,6 @@ import traceback
 # Пути для поиска DLC
 DLC_DIRS = [
     "dlc",
-    os.path.expanduser("~/Рабочий стол/fitz_dlc_sins"),
-    os.path.expanduser("~/Desktop/fitz_dlc_sins"),
 ]
 
 def load_dlcs():

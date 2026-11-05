@@ -122,12 +122,17 @@ class Voice:
 
     def speak(self, text: str, pitch: str = "high", rate: str = "medium"):
         if not text:
+            _log.info("voice drop: пустой текст до нормализации")
             return
+        raw_len = len(text)
         text = self._normalize(text)
         if not text:
+            _log.info("voice drop: пустой после нормализации (исходно %d симв.)", raw_len)
             return
         self.is_speaking = True
         self._queue.put((text, pitch, rate))
+        _log.info("voice enqueue: %d симв., engine=%s, очередь=%d",
+                  len(text), self.engine_type, self._queue.qsize())
 
     def speak_blocking(self, text: str, pitch: str = "high", rate: str = "medium"):
         if not text:
@@ -146,9 +151,12 @@ class Voice:
             time.sleep(0.05)
 
     def _speak_now(self, text: str, pitch: str = "high", rate: str = "medium"):
+        _t0 = time.time()
         try:
             if not text or not text.strip():
+                _log.info("voice drop: пустой текст в _speak_now")
                 return
+            _log.info("voice start: %d симв., engine=%s", len(text), self.engine_type)
             with self._lock:
                 self.is_speaking = True
                 if self.engine_type == "silero":
@@ -222,6 +230,7 @@ class Voice:
             self.is_speaking = False
             self.current_volume = 0.0
             self.last_speech_end = time.time()
+            _log.info("voice finish: %d симв., %.2f с", len(text or ""), time.time() - _t0)
 
     def _normalize(self, text: str) -> str:
         if not text:
