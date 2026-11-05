@@ -1,8 +1,6 @@
 """
 ui/haru.py — Виджет Live2D (Haru).
 """
-import os
-from pathlib import Path
 
 from PyQt6.QtCore import Qt, QUrl, QTimer, QPropertyAnimation, QEasingCurve
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QGraphicsOpacityEffect

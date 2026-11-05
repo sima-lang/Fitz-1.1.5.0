@@ -9,7 +9,6 @@ sounds.py — Звуки Фитца 1.5.0 (живость).
   play_wake()    — звук пробуждения (wake-word)
 """
 import os
-import platform as _platform
 from core.logger import get_logger
 _log = get_logger("sounds")
 
@@ -46,7 +45,6 @@ def _generate_tone(freq: float, duration: float, volume: float = 0.3):
     import numpy as np
     import io
     import wave
-    import struct
 
     sample_rate = 22050
     n_samples = int(sample_rate * duration)

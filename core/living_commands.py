@@ -26,16 +26,6 @@ FAST_COMMANDS = {
     "логи", "логи зрения", "логи ocr",
 }
 
-# Команды, которые ТОЧНО надо пересказывать живо
-LIVELY_COMMANDS = {
-    "погода", "погода в ", "открой ", "найди ",
-    "включи ", "выключи ", "заблокируй", "перезагрузи",
-    "музыка", "трек", "видео",
-    "запомни ", "выучи ", "что ты знаешь о ",
-    "шутка", "факт", "привет", "как дела",
-    "напомни ", "задача", "задачи",
-    "камера", "зрение", "охрана", "страж",
-}
 
 
 def _log(msg: str):
@@ -52,14 +42,6 @@ def _is_fast(text: str) -> bool:
     low = text.lower().strip()
     for cmd in FAST_COMMANDS:
         if low == cmd or low.startswith(cmd + " "):
-            return True
-    return False
-
-
-def _is_lively(text: str) -> bool:
-    low = text.lower().strip()
-    for cmd in LIVELY_COMMANDS:
-        if low == cmd or low.startswith(cmd):
             return True
     return False
 

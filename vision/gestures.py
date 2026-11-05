@@ -5,7 +5,6 @@ gestures.py — Распознавание жестов через MediaPipe.
 import cv2
 import mediapipe as mp
 import threading
-import time
 
 class GestureDetector:
     def __init__(self, voice=None, callback=None):

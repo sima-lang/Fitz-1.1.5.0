@@ -6,7 +6,6 @@ from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QGraphicsOpacityEffect
 )
-from PyQt6.QtGui import QFont
 
 LOADING_PHRASES = [
     "Загружаю душу... Не пугайся, если она зашевелится.",

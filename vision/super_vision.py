@@ -114,10 +114,6 @@ class SuperVision:
             handle = str(reply.body[0])
 
             # 2) Ждём сигнал Response
-            req_addr = DBusAddress(
-                handle,
-                interface="org.freedesktop.portal.Request",
-            )
             conn.send(new_method_call(
                 DBusAddress(
                     "/org/freedesktop/portal/desktop",

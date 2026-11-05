@@ -2,7 +2,6 @@
 ai.py — Запомни / выучи / покажи факты.
 Использует brain (knowledge) и memory.
 """
-from datetime import datetime
 from core.logger import get_logger
 _log = get_logger("ai")
 

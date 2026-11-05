@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QCheckBox, QComboBox, QTabWidget, QWidget,
     QFormLayout, QMessageBox, QSlider, QColorDialog, QSpinBox,
-    QGroupBox, QGridLayout
+    QGroupBox
 )
 from PyQt6.QtGui import QColor
 from core.logger import get_logger

@@ -5,7 +5,6 @@ system.py — Системные команды: время, дата, мони�
 import time
 import platform
 import subprocess
-import shutil
 from datetime import datetime
 from core.logger import get_logger
 _log = get_logger("system")

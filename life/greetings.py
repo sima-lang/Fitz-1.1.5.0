@@ -117,34 +117,3 @@ FAREWELLS = {
         "Пока. Я на посту.",
     ],
 }
-
-
-def make_farewell(brain=None, soul=None) -> str:
-    """Возвращает живое прощание."""
-    parts = []
-
-    # 1) Если было много разговоров — упомянуть
-    if soul is not None:
-        try:
-            count = soul.get_status().get("conversations", 0)
-            if count > 5:
-                parts.append(f"Сегодня мы говорили {count} раз. Спасибо.")
-        except Exception:
-            _log.debug("пропущено в life/greetings.py (строка 133)")
-
-    # 2) Если настроение грустное — поддержать
-    if soul is not None:
-        try:
-            mood = soul.get_status().get("mood", "нейтральное")
-            if mood == "грустное":
-                parts.append("Не грусти. Я вернусь.")
-        except Exception:
-            _log.debug("пропущено в life/greetings.py (строка 142)")
-
-    # 3) Базовое прощание
-    bucket = _time_bucket()
-    base = random.choice(FAREWELLS.get(bucket, FAREWELLS["day"]))
-
-    if parts:
-        return base + " " + " ".join(parts)
-    return base
