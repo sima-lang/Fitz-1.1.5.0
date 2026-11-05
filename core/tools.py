@@ -149,7 +149,7 @@ def take_screenshot() -> str:
             _tlog.debug("screenshot fallback exhausted at this level")
         try:
             import mss
-            with mss.mss() as sct:
+            with mss.MSS() as sct:
                 sct.shot(output=dest)
             return f"📸 Скриншот сохранён: {dest}"
         except Exception:
@@ -165,7 +165,7 @@ def take_screenshot() -> str:
             _tlog.debug("screenshot fallback exhausted at this level")
         try:
             import mss
-            with mss.mss() as sct:
+            with mss.MSS() as sct:
                 sct.shot(output=dest)
             return f"📸 Скриншот сохранён: {dest}"
         except Exception:
@@ -181,7 +181,7 @@ def take_screenshot() -> str:
 
     try:
         import mss
-        with mss.mss() as sct:
+        with mss.MSS() as sct:
             sct.shot(output=dest)
         return f"📸 Скриншот сохранён: {dest}"
     except Exception as e:

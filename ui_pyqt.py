@@ -193,6 +193,20 @@ try:
 except Exception:
     print("пропущено в ui_pyqt (строка 182): load_dotenv недоступен")
 
+# Ключ из окна настроек применяется, если .env его не задал
+if not os.getenv("API_KEY"):
+    try:
+        from ui.settings_dialog import load_settings as _load_settings
+        _saved = _load_settings()
+        if _saved.get("api_key"):
+            os.environ["API_KEY"] = _saved["api_key"]
+        if _saved.get("api_url") and not os.getenv("API_URL"):
+            os.environ["API_URL"] = _saved["api_url"]
+        if _saved.get("api_model") and not os.getenv("API_MODEL"):
+            os.environ["API_MODEL"] = _saved["api_model"]
+    except Exception:
+        pass
+
 os.makedirs("logs", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 
