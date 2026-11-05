@@ -23,12 +23,14 @@ def handle(text, memory, core):
     if low in ("перезагрузи пк", "перезагрузка", "ребут", "reboot", "перезагрузи"):
         if not _full_access_enabled():
             return "⛔ Полный доступ выключен. Включи в настройках (вкладка «Права»)."
-        return os_layer.restart_pc(5)
+        from core import autonomy
+        return autonomy.request_dangerous_action("reboot")["question"]
 
     if low in ("выключи пк", "выключить пк", "выключение", "shutdown", "выключи"):
         if not _full_access_enabled():
             return "⛔ Полный доступ выключен. Включи в настройках (вкладка «Права»)."
-        return os_layer.shutdown_pc(5)
+        from core import autonomy
+        return autonomy.request_dangerous_action("shutdown")["question"]
 
     if low in ("отмена", "отменить", "не надо", "отмени выключение"):
         return os_layer.cancel_shutdown()

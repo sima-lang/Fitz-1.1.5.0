@@ -188,6 +188,9 @@ def handle(text, memory, core):
                 target = "https://" + target
             return _open_url_in_browser(target)
 
+        from core import autonomy
+        if autonomy.is_allowed_app(target):
+            return autonomy.request_dangerous_action("launch_app", target)["question"]
         app_result = _open_app(target)
         if app_result:
             return app_result

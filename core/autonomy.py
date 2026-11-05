@@ -196,10 +196,24 @@ DANGEROUS_ACTIONS = {
     "send_external": "отправить сообщение наружу",
 }
 
-_pending_confirm = {}  # action -> dict; ожидает ответа «да/нет»
+# Разрешённые приложения для launch_app. Совпадают с ключами словаря apps в core/tools.open_app.
+ALLOWED_APPS = (
+    "steam", "firefox", "браузер", "chrome", "код", "vscode",
+    "терминал", "telegram", "discord", "spotify", "vlc",
+)
 
 
-def request_dangerous_action(action: str) -> dict:
+def is_allowed_app(name: str) -> bool:
+    """Запуск разрешён только для имён из белого списка. Пути, аргументы и пробелы отклоняются."""
+    if not name:
+        return False
+    return name.strip().lower() in ALLOWED_APPS
+
+
+_pending_confirm = {}  # action / arg -> ожидает ответа «да/нет»
+
+
+def request_dangerous_action(action: str, arg: str = "") -> dict:
     """
     Не выполняет действие. Запоминает его как ожидающее подтверждения
     и возвращает {"needs_confirm": True, "action": action, ...}.
@@ -209,11 +223,14 @@ def request_dangerous_action(action: str) -> dict:
         return {"needs_confirm": False, "action": action}
     _pending_confirm.clear()
     _pending_confirm["action"] = action
-    _journal(f"ЗАПРОС ПОДТВЕРЖДЕНИЯ: {action}")
+    _pending_confirm["arg"] = arg
+    _journal(f"ЗАПРОС ПОДТВЕРЖДЕНИЯ: {action} {arg}".rstrip())
+    what = DANGEROUS_ACTIONS[action] + (f" «{arg}»" if arg else "")
     return {
         "needs_confirm": True,
         "action": action,
-        "question": f"Создатель, я хочу выполнить {DANGEROUS_ACTIONS[action]}. Подтверждаешь? (да/нет)",
+        "arg": arg,
+        "question": f"Создатель, я хочу выполнить: {what}. Подтверждаешь? (да/нет)",
     }
 
 
@@ -225,28 +242,43 @@ def resolve_confirm(answer: str) -> str | None:
     """
     Обрабатывает ответ «да»/«нет» на ожидающее подтверждение.
     Возвращает текст ответа Фитца или None, если ожидания нет.
-    Выполнение реально опасных действий здесь НЕ происходит: только отметка
-    и журнал. Исполнитель подключается отдельно (см. execute_confirmed).
+    Действие выполняется ТОЛЬКО после явного «да».
     """
     if not has_pending_confirm():
         return None
     action = _pending_confirm.pop("action")
+    arg = _pending_confirm.pop("arg", "")
     low = answer.lower().strip()
     if low in ("да", "подтверждаю", "yes", "ок", "давай"):
-        _journal(f"ПОДТВЕРЖДЕНО: {action}")
-        return execute_confirmed(action)
+        _journal(f"ПОДТВЕРЖДЕНО: {action} {arg}".rstrip())
+        return execute_confirmed(action, arg)
     if low in ("нет", "отмена", "не надо", "no"):
-        _journal(f"ОТМЕНЕНО: {action}")
+        _journal(f"ОТМЕНЕНО: {action} {arg}".rstrip())
         return "Хорошо, не выполняю."
     # Любой другой ответ — отменяем, чтобы не выполнить по неясному сообщению
-    _journal(f"ОТМЕНЕНО (неясный ответ): {action}")
+    _journal(f"ОТМЕНЕНО (неясный ответ): {action} {arg}".rstrip())
     return "Не поняла ответ, действие отменено. Скажи «да» или «нет», если хочешь повторить."
 
 
-def execute_confirmed(action: str) -> str:
+def execute_confirmed(action: str, arg: str = "") -> str:
     """
-    Исполнитель подтверждённого действия. Пока не подключён ни одного реального
-    исполнителя: возвращает честный отказ, а не имитирует выполнение.
+    Исполнитель ПОДТВЕРЖДЁННОГО действия. Вызывается только из resolve_confirm
+    после ответа «да». Каждое действие пишет результат в журнал.
     """
-    _journal(f"НЕ ВЫПОЛНЕНО: исполнитель для «{action}» не подключён")
-    return f"Подтверждение получено, но исполнитель для «{DANGEROUS_ACTIONS[action]}» ещё не подключён."
+    if action == "shutdown":
+        from core.tools import shutdown_pc
+        result = shutdown_pc()
+    elif action == "reboot":
+        from core.tools import reboot_pc
+        result = reboot_pc()
+    elif action == "launch_app":
+        if not is_allowed_app(arg):
+            _journal(f"ОТКЛОНЕНО (не в списке): запуск «{arg}»")
+            return f"Приложение «{arg}» не в списке разрешённых. Не запускаю."
+        from core.tools import open_app
+        result = open_app(arg)
+    else:
+        _journal(f"НЕ ВЫПОЛНЕНО: исполнитель для «{action}» не подключён")
+        return f"Исполнитель для «{DANGEROUS_ACTIONS.get(action, action)}» ещё не подключён."
+    _journal(f"ВЫПОЛНЕНО «{action}» {arg}: {result}".rstrip())
+    return result

@@ -838,12 +838,47 @@ class TestAutonomy(unittest.TestCase):
         self.assertIn("отменено", reply)
         self.assertFalse(self.autonomy.has_pending_confirm())
 
-    def test_answer_yes_does_not_fake_execution(self):
-        # Исполнителя пока нет: «да» не должно притворяться выполнением
-        self.autonomy.request_dangerous_action("shutdown")
-        reply = self.autonomy.resolve_confirm("да")
-        self.assertIn("не подключён", reply)
-        self.assertNotIn("выполнено", reply.lower().replace("не выполнено", ""))
+    def test_answer_yes_calls_executor_only_after_confirmation(self):
+        # Тест не должен выключать реальный ПК: исполнитель подменяем моком
+        from unittest.mock import patch
+        with patch("core.tools.shutdown_pc", return_value="mocked") as sd:
+            self.autonomy.request_dangerous_action("shutdown")
+            self.assertFalse(sd.called, "исполнитель вызван до подтверждения")
+            reply = self.autonomy.resolve_confirm("да")
+            self.assertTrue(sd.called, "после «да» исполнитель должен быть вызван")
+            self.assertEqual(reply, "mocked")
+
+    def test_answer_no_never_calls_executor(self):
+        from unittest.mock import patch
+        with patch("core.tools.shutdown_pc", return_value="mocked") as sd:
+            self.autonomy.request_dangerous_action("shutdown")
+            self.autonomy.resolve_confirm("нет")
+            self.assertFalse(sd.called)
+
+    def test_launch_refuses_name_outside_allowlist(self):
+        from unittest.mock import patch
+        with patch("core.tools.open_app", return_value="opened") as oa:
+            reply = self.autonomy.execute_confirmed("launch_app", "rm -rf /")
+            self.assertFalse(oa.called)
+            self.assertIn("не в списке", reply)
+
+    def test_launch_allowed_app_calls_open_app(self):
+        from unittest.mock import patch
+        with patch("core.tools.open_app", return_value="🚀 Запустил: steam") as oa:
+            self.autonomy.request_dangerous_action("launch_app", "steam")
+            reply = self.autonomy.resolve_confirm("да")
+            oa.assert_called_once_with("steam")
+            self.assertIn("Запустил", reply)
+
+    def test_power_commands_ask_before_acting(self):
+        from unittest.mock import patch
+        from commands import power
+        with patch.object(power, "_full_access_enabled", return_value=True), \
+             patch("core.tools.shutdown_pc", return_value="mocked") as sd:
+            reply = power.handle("выключи пк", None, None)
+            self.assertIn("Подтверждаешь", reply)
+            self.assertFalse(sd.called)
+        self.autonomy._pending_confirm.clear()
 
     def test_new_request_replaces_pending(self):
         self.autonomy.request_dangerous_action("shutdown")
