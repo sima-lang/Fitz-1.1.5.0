@@ -1237,7 +1237,7 @@ class TestParseGoalTools(IsolatedAutonomy, unittest.TestCase):
         self.assertIn("open_app", prompt)
         self.assertEqual(steps, [{"tool": "open_app", "arg": "steam"}])
 
-    def test_validate_keeps_new_tools_and_drops_emulation(self):
+    def test_validate_keeps_new_tools_and_emulation(self):
         from core import task_runner
         raw = [
             {"tool": "open_app", "arg": "steam"},
@@ -1245,7 +1245,35 @@ class TestParseGoalTools(IsolatedAutonomy, unittest.TestCase):
             {"tool": "type_text", "arg": "x"},
         ]
         tools = [s["tool"] for s in task_runner._validate_steps(raw)]
-        self.assertEqual(tools, ["open_app", "read_file"])
+        self.assertEqual(tools, ["open_app", "read_file", "type_text"])
+
+    def test_fallback_terminal_task_opens_terminal_then_types(self):
+        from core import task_runner
+        steps = task_runner._fallback_steps("открой терминал и напиши 'привет'")
+        self.assertEqual(steps[0], {"tool": "open_app", "arg": "терминал"})
+        self.assertEqual(steps[1], {"tool": "type_text", "arg": "привет"})
+
+    def test_cycle_emulation_without_flag_is_refused(self):
+        from unittest.mock import patch
+        from core import task_runner
+        steps = [{"tool": "type_text", "arg": "привет"}]
+        with patch.object(task_runner, "parse_goal", return_value=steps), \
+             patch("core.tools.type_text") as tt:
+            summary = task_runner.run_cycle("напиши привет")
+        self.assertFalse(tt.called)
+        self.assertEqual(summary["results"][0]["error"], "эмуляция выключена")
+
+    def test_cycle_emulation_with_flag_waits_for_confirmation(self):
+        from unittest.mock import patch
+        from core import task_runner
+        self.autonomy.set_emulation(True)
+        steps = [{"tool": "type_text", "arg": "привет"}]
+        with patch.object(task_runner, "parse_goal", return_value=steps), \
+             patch("core.tools.type_text") as tt:
+            summary = task_runner.run_cycle("напиши привет")
+        self.assertFalse(tt.called, "до «да» ввод не выполняется")
+        self.assertTrue(summary["results"][0]["pending_confirm"])
+        self.assertTrue(self.autonomy.has_pending_confirm())
 
     def test_read_file_refuses_outside_project(self):
         from core import agent_tools

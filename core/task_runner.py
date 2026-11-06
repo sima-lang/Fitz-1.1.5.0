@@ -50,7 +50,8 @@ def _validate_steps(raw) -> list:
             continue
         tool = item.get("tool")
         arg = item.get("arg", "")
-        if tool not in ALLOWED_TOOLS or not isinstance(arg, str):
+        # Эмуляция проходит валидацию, но в run_cycle выполняется только с флагом и подтверждением «да».
+        if (tool not in ALLOWED_TOOLS and tool not in EMULATION_TOOLS) or not isinstance(arg, str):
             _log.warning("шаг отброшен: инструмент %r не разрешён", tool)
             continue
         steps.append({"tool": tool, "arg": arg.strip()[:2000]})
@@ -58,8 +59,15 @@ def _validate_steps(raw) -> list:
 
 
 def _fallback_steps(goal: str) -> list:
-    """Запасной разбор без API: поиск по ключевым словам и план в конце."""
+    """Запасной разбор без API. «открой терминал … напиши X» → открыть терминал и напечатать X (X — с подтверждением)."""
     low = goal.lower()
+    if "терминал" in low and "напиши" in low:
+        m = re.search(r"напиши\s+['\"«]?([^'\"»]+)['\"»]?", goal, re.I)
+        text = m.group(1).strip() if m else "привет"
+        return [
+            {"tool": "open_app", "arg": "терминал"},
+            {"tool": "type_text", "arg": text},
+        ]
     steps = []
     if "pyqt" in low or "код" in low or "улучши" in low:
         steps.append({"tool": "search_web", "arg": "PyQt6 новые возможности best practices"})
@@ -74,7 +82,7 @@ def parse_goal(goal: str, api=None) -> list:
     if api is not None and getattr(api, "enabled", False):
         prompt = (
             "Разбей задачу на шаги. Ответь ТОЛЬКО JSON-массивом вида "
-            '[{"tool": "<имя инструмента>", "arg": "<аргумент>"}]. '
+            '[{"tool": "open_app|type_text|click_at|search_web|read_file|write_plan", "arg": "..."}]. '
             "Максимум 8 шагов.\n\n" + TOOLS_PROMPT + "\nЗадача: " + goal
         )
         try:
@@ -118,8 +126,9 @@ def run_task(goal: str, api=None) -> dict:
 
 def run_cycle(goal: str, api=None) -> dict:
     """
-    Цикл выполнения задачи: разбор → шаги по очереди → отчёт в data/autonomy.log.
-    Эмуляция ввода отклоняется без emulation_enabled. Возвращает сводку.
+    Цикл: разбор → шаги по очереди → отчёт в data/autonomy.log.
+    open_app выполняется сразу (белый список). Эмуляция без emulation_enabled отклоняется;
+    с флагом — ставится на подтверждение «да» и цикл останавливается на этом шаге.
     """
     from core import autonomy
     steps = parse_goal(goal, api=api)
@@ -128,11 +137,17 @@ def run_cycle(goal: str, api=None) -> dict:
     for i, step in enumerate(steps, 1):
         tool = step["tool"]
         if tool in EMULATION_TOOLS:
-            res = {"ok": False, "error": "эмуляция выключена"} if not autonomy.is_emulation_enabled() \
-                else _run_emulation(tool, step["arg"])
+            if not autonomy.is_emulation_enabled():
+                res = {"ok": False, "error": "эмуляция выключена"}
+            else:
+                req = autonomy.request_dangerous_action(tool, step["arg"])
+                res = {"ok": False, "pending_confirm": True, "question": req["question"]}
         else:
             res = run_steps([step])[0]
         results.append({"step": i, "tool": tool, **res})
+        if res.get("pending_confirm"):
+            autonomy._journal(f"ЦИКЛ шаг {i} {tool}: ожидает подтверждения, цикл приостановлен")
+            break
         autonomy._journal(f"ЦИКЛ шаг {i} {tool}: {'ok' if res.get('ok') else res.get('error')}")
     ok = sum(1 for r in results if r.get("ok"))
     autonomy._journal(f"ЦИКЛ отчёт: {ok}/{len(steps)} шагов ok")
