@@ -377,4 +377,40 @@ def execute_confirmed(action: str, arg: str = "") -> str:
         _journal(f"НЕ ВЫПОЛНЕНО: исполнитель для «{action}» не подключён")
         return f"Исполнитель для «{DANGEROUS_ACTIONS.get(action, action)}» ещё не подключён."
     _journal(f"ВЫПОЛНЕНО «{action}» {arg}: {result}".rstrip())
+    # Цепочка: после подтверждённого шага выполняем оставшиеся шаги задачи.
+    if action in ("click_at", "type_text", "press_key"):
+        from core import task_runner
+        # Текущий подтверждённый шаг уже выполнен — снимаем его с начала цепочки, иначе он повторится.
+        chain = load_chain()
+        if chain and chain[0].get("tool") == action:
+            save_chain(chain[1:])
+        cont = task_runner.continue_chain()
+        if cont:
+            result = f"{result}\n{cont}"
+        elif not load_chain():
+            # Цепочка была и исчерпана этим подтверждением — задача завершена.
+            _journal("Задача выполнена полностью")
+            result = f"{result}\nЗадача выполнена полностью."
     return result
+
+
+# ----------------------------------------------------------------------
+# Цепочка шагов: остаток задачи, который ждёт подтверждения эмуляции.
+# Хранится в data/autonomy.json (ключ "chain"), чтобы пережить перезапуск.
+# ----------------------------------------------------------------------
+def save_chain(steps: list) -> None:
+    state = load_state()
+    state["chain"] = list(steps)
+    save_state(state)
+    _journal(f"ЦЕПОЧКА сохранена: {len(steps)} шагов ждут продолжения")
+
+
+def load_chain() -> list:
+    return list(load_state().get("chain", []))
+
+
+def clear_chain() -> None:
+    state = load_state()
+    if state.get("chain"):
+        state["chain"] = []
+        save_state(state)

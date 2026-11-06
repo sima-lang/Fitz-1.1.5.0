@@ -147,11 +147,43 @@ def run_cycle(goal: str, api=None) -> dict:
         results.append({"step": i, "tool": tool, **res})
         if res.get("pending_confirm"):
             autonomy._journal(f"ЦИКЛ шаг {i} {tool}: ожидает подтверждения, цикл приостановлен")
+            autonomy.save_chain(steps[i:])  # остаток задачи ждёт продолжения после «да»
             break
         autonomy._journal(f"ЦИКЛ шаг {i} {tool}: {'ok' if res.get('ok') else res.get('error')}")
     ok = sum(1 for r in results if r.get("ok"))
     autonomy._journal(f"ЦИКЛ отчёт: {ok}/{len(steps)} шагов ok")
     return {"goal": goal, "steps": len(steps), "ok": ok, "results": results}
+
+
+def continue_chain() -> str | None:
+    """
+    Выполняет сохранённый остаток задачи после подтверждения «да».
+    Идёт по шагам, пока не встретит следующую эмуляцию (тогда снова ждёт «да»).
+    Когда остаток исчерпан — очищает цепочку, пишет «Задача выполнена полностью».
+    Возвращает None, если продолжать было нечего.
+    """
+    from core import autonomy
+    steps = autonomy.load_chain()
+    if not steps:
+        return None
+    done = []
+    for i, step in enumerate(steps):
+        tool = step["tool"]
+        if tool in EMULATION_TOOLS:
+            if not autonomy.is_emulation_enabled():
+                autonomy.clear_chain()
+                autonomy._journal("ЦЕПОЧКА прервана: эмуляция выключена")
+                return "Эмуляция выключена — остаток задачи отменён."
+            req = autonomy.request_dangerous_action(tool, step["arg"])
+            autonomy.save_chain(steps[i + 1:])  # этот шаг ждёт «да», остаток сохраняем
+            return f"Следующий шаг: {req['question']}"
+        res = run_steps([step])[0]
+        done.append(res)
+        autonomy._journal(f"ЦЕПОЧКА шаг {tool}: {'ok' if res.get('ok') else res.get('error')}")
+    autonomy.clear_chain()
+    autonomy._journal("Задача выполнена полностью")
+    ok = sum(1 for r in done if r.get("ok"))
+    return f"Задача выполнена полностью ({ok}/{len(done)} шагов ok)."
 
 
 def _run_emulation(tool: str, arg: str) -> dict:

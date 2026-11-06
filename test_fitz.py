@@ -1213,6 +1213,73 @@ class TestEmulationAndSleep(IsolatedAutonomy, unittest.TestCase):
         self.assertEqual(summary["results"][0]["error"], "эмуляция выключена")
 
 
+class TestTaskChain(IsolatedAutonomy, unittest.TestCase):
+    """Цепочка: после «да» на эмуляцию выполняется остаток задачи; без «да» ничего не выполняется."""
+
+    def setUp(self):
+        self._isolate_autonomy()
+
+    def tearDown(self):
+        self._restore_autonomy()
+
+    def test_chain_saved_after_emulation_waits(self):
+        from unittest.mock import patch
+        from core import task_runner
+        self.autonomy.set_emulation(True)
+        steps = [
+            {"tool": "open_app", "arg": "терминал"},
+            {"tool": "type_text", "arg": "привет"},
+            {"tool": "write_plan", "arg": "после"},
+        ]
+        with patch.object(task_runner, "parse_goal", return_value=steps), \
+             patch("core.agent_tools.open_app_safe", return_value={"ok": True, "result": "ok"}), \
+             patch("core.agent_tools.write_plan", return_value={"ok": True}) as wp:
+            task_runner.run_cycle("открой терминал и напиши привет")
+        self.assertFalse(wp.called, "шаги после эмуляции не выполняются до «да»")
+        chain = self.autonomy.load_chain()
+        # Текущий type_text уже на подтверждении; в цепочке только остаток — write_plan.
+        self.assertEqual([s["tool"] for s in chain], ["write_plan"])
+        self.assertTrue(self.autonomy.has_pending_confirm())
+
+    def test_yes_runs_emulation_then_remaining_steps(self):
+        from unittest.mock import patch
+        self.autonomy.set_emulation(True)
+        self.autonomy.save_chain([{"tool": "type_text", "arg": "привет"}])
+        self.autonomy.request_dangerous_action("type_text", "привет")
+        with patch("core.tools.type_text", return_value="✏️ напечатал") as tt, \
+             patch("core.agent_tools.write_plan", return_value={"ok": True}) as wp:
+            reply = self.autonomy.resolve_confirm("да")
+        tt.assert_called_once_with("привет")
+        self.assertIn("выполнена полностью", reply)
+        self.assertEqual(self.autonomy.load_chain(), [])
+        self.assertFalse(wp.called, "в этой цепочке шагов после type_text не было")
+
+    def test_no_clears_nothing_runs(self):
+        from unittest.mock import patch
+        self.autonomy.set_emulation(True)
+        self.autonomy.save_chain([{"tool": "type_text", "arg": "привет"}])
+        self.autonomy.request_dangerous_action("type_text", "привет")
+        with patch("core.tools.type_text") as tt:
+            self.autonomy.resolve_confirm("нет")
+        self.assertFalse(tt.called)
+
+    def test_chain_survives_restart_via_state_file(self):
+        self.autonomy.save_chain([{"tool": "write_plan", "arg": "x"}])
+        # имитация перезапуска: состояние читается заново из файла
+        self.assertEqual(self.autonomy.load_state()["chain"][0]["tool"], "write_plan")
+
+    def test_completion_logged(self):
+        from unittest.mock import patch
+        self.autonomy.set_emulation(True)
+        self.autonomy.save_chain([{"tool": "type_text", "arg": "привет"}])
+        self.autonomy.request_dangerous_action("type_text", "привет")
+        with patch("core.tools.type_text", return_value="ok"):
+            self.autonomy.resolve_confirm("да")
+        journal = self.autonomy.JOURNAL_FILE.read_text(encoding="utf-8") \
+            if self.autonomy.JOURNAL_FILE.exists() else ""
+        self.assertIn("Задача выполнена полностью", journal)
+
+
 class TestParseGoalTools(IsolatedAutonomy, unittest.TestCase):
     """Промпт для API знает все инструменты; агент не читает вне проекта и не запускает чужое."""
 
