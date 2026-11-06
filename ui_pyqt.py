@@ -374,6 +374,7 @@ class FitzApp(QMainWindow):
         self.last_screen_description = ""
         self._api_status = ""
         self._closing = False
+        self._pending_confirm_shown = False  # чтобы не спамить вопрос в чат
 
         self.executor = ThreadPoolExecutor(max_workers=2)
 
@@ -543,6 +544,10 @@ class FitzApp(QMainWindow):
         except Exception:
             log("Пропущено: не удалось остановить таймер загрузки; продолжаю работу")
         self._show_main()
+        # Таймер: раз в 2 секунды проверяем, ждёт ли автономность подтверждения
+        self._confirm_timer = QTimer()
+        self._confirm_timer.timeout.connect(self._check_pending_confirm)
+        self._confirm_timer.start(2000)
         problems = getattr(self, "_env_problems", [])
         if problems:
             text = "Не работает в этой системе:\n" + "\n".join(f"• {p}" for p in problems)
@@ -1125,25 +1130,29 @@ class FitzApp(QMainWindow):
             if self.soul:
                 self.soul.analyze_mood(text)
 
-            # ===== ПРОВЕРКА НА РАБОТУ С ФАЙЛАМИ (в обход brain) =====
+            # ===== ПОДТВЕРЖДЕНИЕ ОПАСНОГО ДЕЙСТВИЯ — самый первый чек, до нейросети =====
+            from core import autonomy as _autonomy
             low_text = text.lower().strip()
+            if low_text in ("да", "нет", "yes", "no") and _autonomy.has_pending_confirm():
+                if low_text in ("да", "yes"):
+                    reply = _autonomy.resolve_confirm("да")
+                    msg = "✅ Подтверждено. Выполняю..."
+                else:
+                    reply = _autonomy.resolve_confirm("нет")
+                    msg = "❌ Отменено."
+                if reply is not None:
+                    self._pending_confirm_shown = False  # сброс для следующего запроса
+                self.add_message_signal.emit("🛡️ Фитц", msg, False)
+                if self.voice:
+                    self.voice.speak(msg)
+                self.typing_signal.emit(False)
+                return
 
             # ===== ВСЕ АНИМАЦИИ ПО КОМАНДЕ =====
             if "все анимации" in low_text or "все движения" in low_text:
                 self._play_all_motions()
                 self.add_message_signal.emit("🛡️ Фитц", "Показываю все анимации.", False)
                 return
-
-            # ===== ОЖИДАНИЕ ПОДТВЕРЖДЕНИЯ ОПАСНОГО ДЕЙСТВИЯ (автономный режим, этап 2) =====
-            from core import autonomy as _autonomy
-            if _autonomy.has_pending_confirm():
-                reply = _autonomy.resolve_confirm(text)
-                if reply is not None:
-                    self.add_message_signal.emit("🛡️ Фитц", reply, False)
-                    if self.voice:
-                        self.voice.speak(reply)
-                    self.typing_signal.emit(False)
-                    return
 
             # ===== ОТКАЗ НА ЛЮБОЕ ПРЕДЛОЖЕНИЕ ИНИЦИАТИВЫ =====
             if (self.initiative and self.initiative.awaiting_answer()
@@ -1549,6 +1558,21 @@ class FitzApp(QMainWindow):
                 if dialog:
                     dialog.set_mc_status("Отключен")
         self._update_status_bar()
+
+    def _check_pending_confirm(self):
+        """Таймер (2 с): если автономность ждёт подтверждения, выводит вопрос в чат."""
+        if self._closing or not hasattr(self, "chat") or self.chat is None:
+            return
+        from core import autonomy as _autonomy
+        if not _autonomy.has_pending_confirm():
+            self._pending_confirm_shown = False  # сброс — ждём новый запрос
+            return
+        if self._pending_confirm_shown:
+            return  # уже показали, не спамим
+        question = _autonomy.get_pending_question()
+        if question:
+            self._pending_confirm_shown = True
+            self.add_message_signal.emit("🛡️ Фитц", question, False)
 
     def _check_mc_messages(self):
         from_bot = Path("data/mc_from_bot.txt")

@@ -33,6 +33,8 @@ class API:
         self.base_url = os.getenv("API_URL", "https://api.provod.ai/v1").rstrip("/")
         self.model = os.getenv("API_MODEL", "deepseek-v4-flash")
         self.timeout = int(os.getenv("API_TIMEOUT", "30"))
+        # Тупл (connect, read) — read-таймаут защищает от зависания iter_lines() при stream=True
+        self.timeout_tuple = (self.timeout, self.timeout)
 
         if not self.api_key:
             print("⚠️ API_KEY не найден в .env — работаю в локальном режиме.")
@@ -43,11 +45,13 @@ class API:
 
     # ---------- основной метод ----------
     def ask(self, prompt: str, context: list = None,
-            max_tokens: int = 800, temperature: float = 0.6) -> str:
+            max_tokens: int = 800, temperature: float = 0.6,
+            model: str = None) -> str:
         """
         prompt   — текст пользователя
         context  — список сообщений [{"role": "...", "content": "..."}]
                    (история диалога, кладётся между system и user)
+        model    — модель для этого запроса (если None — self.model)
         """
         if not self.enabled:
             return self._offline_fallback(prompt)
@@ -64,7 +68,7 @@ class API:
         messages.append({"role": "user", "content": prompt})
 
         data = {
-            "model": self.model,
+            "model": model or self.model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
@@ -77,7 +81,7 @@ class API:
                 f"{self.base_url}/chat/completions",
                 headers=headers,
                 json=data,
-                timeout=self.timeout,
+                timeout=self.timeout_tuple,
                 stream=True,
             )
         except requests.exceptions.Timeout:

@@ -953,7 +953,7 @@ class TestTaskRunner(IsolatedAutonomy, unittest.TestCase):
     def test_validate_caps_steps(self):
         from core import task_runner
         raw = [{"tool": "write_plan", "arg": str(i)} for i in range(50)]
-        self.assertEqual(len(task_runner._validate_steps(raw)), task_runner.MAX_STEPS)
+        self.assertEqual(len(task_runner._validate_steps(raw)), 10)  # MAX_ITERATIONS
 
     def test_parse_goal_uses_api_when_valid(self):
         from unittest.mock import MagicMock
@@ -975,8 +975,8 @@ class TestTaskRunner(IsolatedAutonomy, unittest.TestCase):
         from core import task_runner
         from unittest.mock import patch
         with patch.dict(task_runner.ALLOWED_TOOLS, {
-            "search_web": lambda a: {"ok": False, "error": "сеть"},
-            "write_plan": lambda a: {"ok": True, "file": "x.md"},
+            "search_web": lambda s: {"ok": False, "error": "сеть"},
+            "write_plan": lambda s: {"ok": True, "file": "x.md"},
         }):
             results = task_runner.run_steps([
                 {"tool": "search_web", "arg": "a"},
@@ -1094,7 +1094,7 @@ class TestTaskQueue(IsolatedAutonomy, unittest.TestCase):
     def test_run_task_does_nothing_when_disabled(self):
         from unittest.mock import patch
         self.autonomy.enqueue_task("цель")
-        with patch("core.task_runner.run_task") as rt:
+        with patch("core.task_runner.run_cycle") as rt:
             self.assertIsNone(self.autonomy.run_task())
         self.assertFalse(rt.called)
 
@@ -1102,7 +1102,7 @@ class TestTaskQueue(IsolatedAutonomy, unittest.TestCase):
         from unittest.mock import patch
         self.autonomy.set_enabled(True)
         self.autonomy.enqueue_task("цель")
-        with patch("core.task_runner.run_task", return_value={"ok": 1, "steps": 1}) as rt:
+        with patch("core.task_runner.run_cycle", return_value={"ok": 1, "steps": 1, "pending": False}) as rt:
             summary = self.autonomy.run_task()
         rt.assert_called_once()
         self.assertEqual(summary["ok"], 1)
@@ -1112,7 +1112,7 @@ class TestTaskQueue(IsolatedAutonomy, unittest.TestCase):
         from unittest.mock import patch
         self.autonomy.set_enabled(True)
         self.autonomy.enqueue_task("цель")
-        with patch("core.task_runner.run_task", return_value={"ok": 0, "steps": 2}):
+        with patch("core.task_runner.run_cycle", return_value={"ok": 0, "steps": 2, "pending": False}):
             self.autonomy.run_task()
         self.assertEqual(self.autonomy.load_state()["queue"][0]["status"], "failed")
 
@@ -1127,6 +1127,17 @@ class TestTaskQueue(IsolatedAutonomy, unittest.TestCase):
         self.assertNotIn("shutdown", task_runner.ALLOWED_TOOLS)
         self.assertNotIn("reboot", task_runner.ALLOWED_TOOLS)
         self.assertNotIn("delete", " ".join(task_runner.ALLOWED_TOOLS))
+
+    def test_cancel_command_clears_chain_and_queue(self):
+        from commands import autonomy_cmd
+        self.autonomy.enqueue_task("цель 1")
+        self.autonomy.enqueue_task("цель 2")
+        self.autonomy.save_chain([{"tool": "type_text", "arg": "привет"}])
+        reply = autonomy_cmd.handle("отмени задачу", None, None)
+        self.assertEqual(reply, "Задача отменена.")
+        state = self.autonomy.load_state()
+        self.assertEqual(state["queue"], [])
+        self.assertEqual(state["chain"], [])
 
 
 class TestEmulationAndSleep(IsolatedAutonomy, unittest.TestCase):
@@ -1165,13 +1176,12 @@ class TestEmulationAndSleep(IsolatedAutonomy, unittest.TestCase):
         res = agent_tools.emulate("click_at", "abc")
         self.assertFalse(res["ok"])
 
-    def test_emulation_requires_confirmation(self):
+    def test_emulation_no_longer_needs_confirm(self):
         from unittest.mock import patch
         self.autonomy.set_emulation(True)
-        with patch("core.tools.click_at") as ck:
-            r = self.autonomy.request_dangerous_action("click_at", "10,20")
-            self.assertTrue(r["needs_confirm"])
-            self.assertFalse(ck.called, "до «да» клика быть не должно")
+        # Эмуляция больше не в DANGEROUS_ACTIONS — подтверждение не требуется
+        r = self.autonomy.request_dangerous_action("click_at", "10,20")
+        self.assertFalse(r["needs_confirm"], "эмуляция больше не требует подтверждения")
 
     def test_sleep_refused_when_autonomy_off(self):
         self.assertIn("выключена", self.autonomy.sleep_pc())
@@ -1202,14 +1212,14 @@ class TestEmulationAndSleep(IsolatedAutonomy, unittest.TestCase):
         self.assertFalse(self.autonomy.is_emulation_enabled())
 
     def test_run_cycle_rejects_emulation_when_flag_off(self):
-        from unittest.mock import patch
+        """Agentic run_cycle: эмуляция без флага → ошибка."""
+        from unittest.mock import MagicMock, patch
         from core import task_runner
-        steps = [{"tool": "click_at", "arg": "1,2"}]
-        with patch.object(task_runner, "parse_goal", return_value=steps), \
-             patch("core.tools.click_at") as ck:
-            summary = task_runner.run_cycle("клик")
+        api = MagicMock(enabled=True)
+        api.ask.return_value = '{"thought":"клик","tool":"click_at","arg":"1,2"}'
+        with patch("core.tools.click_at") as ck:
+            summary = task_runner.run_cycle("клик", api=api)
         self.assertFalse(ck.called)
-        self.assertEqual(summary["ok"], 0)
         self.assertEqual(summary["results"][0]["error"], "эмуляция выключена")
 
 
@@ -1222,59 +1232,60 @@ class TestTaskChain(IsolatedAutonomy, unittest.TestCase):
     def tearDown(self):
         self._restore_autonomy()
 
-    def test_chain_saved_after_emulation_waits(self):
+    def test_emulation_runs_immediately_no_chain(self):
+        """Agentic run_cycle: эмуляция с флагом выполняется мгновенно, без цепочки."""
+        from unittest.mock import MagicMock, patch
+        from core import task_runner
+        self.autonomy.set_emulation(True)
+        api = MagicMock(enabled=True)
+        api.ask.side_effect = [
+            '{"thought":"открываю","tool":"open_app","arg":"терминал"}',
+            '{"thought":"печатаю","tool":"type_text","arg":"привет"}',
+            '{"thought":"план","tool":"write_plan","arg":"после"}',
+            '{"done":true,"summary":"готово"}',
+        ]
+        with patch("core.agent_tools.open_app_safe", return_value={"ok": True, "result": "ok"}), \
+             patch("core.tools.type_text", return_value="ok") as tt, \
+             patch("core.agent_tools.write_plan", return_value={"ok": True}) as wp:
+            summary = task_runner.run_cycle("открой терминал и напиши привет", api=api)
+        self.assertTrue(tt.called, "type_text выполняется сразу")
+        self.assertTrue(wp.called, "write_plan выполняется следом")
+        self.assertTrue(summary["done"])
+        self.assertEqual(self.autonomy.load_chain(), [])
+        self.assertFalse(self.autonomy.has_pending_confirm())
+
+    def test_continue_chain_executes_emulation_directly(self):
         from unittest.mock import patch
         from core import task_runner
         self.autonomy.set_emulation(True)
-        steps = [
-            {"tool": "open_app", "arg": "терминал"},
-            {"tool": "type_text", "arg": "привет"},
-            {"tool": "write_plan", "arg": "после"},
-        ]
-        with patch.object(task_runner, "parse_goal", return_value=steps), \
-             patch("core.agent_tools.open_app_safe", return_value={"ok": True, "result": "ok"}), \
-             patch("core.agent_tools.write_plan", return_value={"ok": True}) as wp:
-            task_runner.run_cycle("открой терминал и напиши привет")
-        self.assertFalse(wp.called, "шаги после эмуляции не выполняются до «да»")
-        chain = self.autonomy.load_chain()
-        # Текущий type_text уже на подтверждении; в цепочке только остаток — write_plan.
-        self.assertEqual([s["tool"] for s in chain], ["write_plan"])
-        self.assertTrue(self.autonomy.has_pending_confirm())
-
-    def test_yes_runs_emulation_then_remaining_steps(self):
-        from unittest.mock import patch
-        self.autonomy.set_emulation(True)
-        self.autonomy.save_chain([{"tool": "type_text", "arg": "привет"}])
-        self.autonomy.request_dangerous_action("type_text", "привет")
+        self.autonomy.save_chain([{"tool": "type_text", "arg": "привет"},
+                                   {"tool": "write_plan", "arg": "после"}])
         with patch("core.tools.type_text", return_value="✏️ напечатал") as tt, \
              patch("core.agent_tools.write_plan", return_value={"ok": True}) as wp:
-            reply = self.autonomy.resolve_confirm("да")
-        tt.assert_called_once_with("привет")
+            reply = task_runner.continue_chain()
+        self.assertTrue(tt.called, "type_text выполняется сразу без подтверждения")
+        self.assertTrue(wp.called, "write_plan выполняется следом")
         self.assertIn("выполнена полностью", reply)
         self.assertEqual(self.autonomy.load_chain(), [])
-        self.assertFalse(wp.called, "в этой цепочке шагов после type_text не было")
 
     def test_no_clears_nothing_runs(self):
-        from unittest.mock import patch
+        """«нет» больше не влияет на эмуляцию (она вне DANGEROUS_ACTIONS). Проверяем, что resolve_confirm с «нет» возвращает None при отсутствии pending."""
         self.autonomy.set_emulation(True)
-        self.autonomy.save_chain([{"tool": "type_text", "arg": "привет"}])
-        self.autonomy.request_dangerous_action("type_text", "привет")
-        with patch("core.tools.type_text") as tt:
-            self.autonomy.resolve_confirm("нет")
-        self.assertFalse(tt.called)
+        # Нет pending confirm → resolve_confirm возвращает None
+        self.assertIsNone(self.autonomy.resolve_confirm("нет"))
 
     def test_chain_survives_restart_via_state_file(self):
         self.autonomy.save_chain([{"tool": "write_plan", "arg": "x"}])
         # имитация перезапуска: состояние читается заново из файла
         self.assertEqual(self.autonomy.load_state()["chain"][0]["tool"], "write_plan")
 
-    def test_completion_logged(self):
+    def test_continue_chain_completion_logged(self):
         from unittest.mock import patch
         self.autonomy.set_emulation(True)
         self.autonomy.save_chain([{"tool": "type_text", "arg": "привет"}])
-        self.autonomy.request_dangerous_action("type_text", "привет")
         with patch("core.tools.type_text", return_value="ok"):
-            self.autonomy.resolve_confirm("да")
+            from core import task_runner
+            task_runner.continue_chain()
         journal = self.autonomy.JOURNAL_FILE.read_text(encoding="utf-8") \
             if self.autonomy.JOURNAL_FILE.exists() else ""
         self.assertIn("Задача выполнена полностью", journal)
@@ -1291,8 +1302,43 @@ class TestParseGoalTools(IsolatedAutonomy, unittest.TestCase):
 
     def test_prompt_lists_all_tools(self):
         from core import task_runner
-        for tool in ("search_web", "read_file", "open_app", "write_plan", "type_text", "click_at"):
-            self.assertIn(tool, task_runner.TOOLS_PROMPT)
+        for tool in ("search_web", "read_file", "open_app", "write_plan",
+                      "run_command", "write_file", "apply_patch", "search_code"):
+            self.assertIn(tool, task_runner.AGENT_SYSTEM, f"{tool!r} not in AGENT_SYSTEM")
+
+    def test_fallback_parses_complex_create_project(self):
+        """«создай папку, напиши файл, запусти» → 3 шага (mkdir, write_file, run_command)."""
+        from core import task_runner
+        goal = ('создай папку projects/test_bot, напиши в нее файл main.py '
+                'с кодом print("Hello Fitz"), запусти его через python')
+        steps = task_runner._fallback_steps(goal)
+        tools = [s["tool"] for s in steps]
+        self.assertIn("run_command", tools, "должен быть mkdir или запуск")
+        self.assertIn("write_file", tools, "должен быть write_file")
+        self.assertGreaterEqual(len(steps), 3, f"ожидали >=3 шага, получили {len(steps)}: {tools}")
+
+    def test_fallback_keeps_file_extension(self):
+        """«напиши файл main.py» → write_file с main.py, а не main."""
+        from core import task_runner
+        steps = task_runner._fallback_steps("напиши файл main.py с кодом x=1")
+        fname = steps[0]["arg"] if steps else ""
+        self.assertIn(".py", fname, f"расширение .py потеряно: {fname!r}")
+
+    def test_fallback_run_uses_file_not_garbage_word(self):
+        """«создай файл main.py ... и запусти» → run_command c main.py, а не «и»."""
+        from core import task_runner
+        steps = task_runner._fallback_steps(
+            "создай файл main.py с кодом print(1) и запусти его через python и проверь")
+        tools = [s["tool"] for s in steps]
+        self.assertIn("write_file", tools)
+        self.assertIn("run_command", tools)
+        # run_command должен ссылаться на main.py, а не на «и»
+        for s in steps:
+            if s["tool"] == "run_command":
+                self.assertIn("main.py", s["arg"],
+                              f"run_command arg должен содержать main.py: {s['arg']!r}")
+                self.assertNotIn(" и", s["arg"],
+                                 f"run_command arg не должен содержать «и»: {s['arg']!r}")
 
     def test_parse_goal_sends_tools_to_api(self):
         from unittest.mock import MagicMock
@@ -1321,26 +1367,62 @@ class TestParseGoalTools(IsolatedAutonomy, unittest.TestCase):
         self.assertEqual(steps[1], {"tool": "type_text", "arg": "привет"})
 
     def test_cycle_emulation_without_flag_is_refused(self):
-        from unittest.mock import patch
+        """Без флага эмуляции — agentic run_cycle возвращает ошибку эмуляции."""
+        from unittest.mock import MagicMock, patch
         from core import task_runner
-        steps = [{"tool": "type_text", "arg": "привет"}]
-        with patch.object(task_runner, "parse_goal", return_value=steps), \
-             patch("core.tools.type_text") as tt:
-            summary = task_runner.run_cycle("напиши привет")
+        api = MagicMock(enabled=True)
+        api.ask.return_value = '{"thought":"печатаем","tool":"type_text","arg":"привет"}'
+        with patch("core.tools.type_text") as tt:
+            summary = task_runner.run_cycle("напиши привет", api=api)
         self.assertFalse(tt.called)
         self.assertEqual(summary["results"][0]["error"], "эмуляция выключена")
 
-    def test_cycle_emulation_with_flag_waits_for_confirmation(self):
-        from unittest.mock import patch
+    def test_cycle_emulation_with_flag_runs_immediately(self):
+        """С флагом эмуляции — agentic run_cycle выполняет type_text."""
+        from unittest.mock import MagicMock, patch
         from core import task_runner
         self.autonomy.set_emulation(True)
-        steps = [{"tool": "type_text", "arg": "привет"}]
-        with patch.object(task_runner, "parse_goal", return_value=steps), \
-             patch("core.tools.type_text") as tt:
-            summary = task_runner.run_cycle("напиши привет")
-        self.assertFalse(tt.called, "до «да» ввод не выполняется")
-        self.assertTrue(summary["results"][0]["pending_confirm"])
-        self.assertTrue(self.autonomy.has_pending_confirm())
+        api = MagicMock(enabled=True)
+        api.ask.return_value = '{"thought":"печатаем","tool":"type_text","arg":"привет"}'
+        with patch("core.tools.type_text") as tt:
+            summary = task_runner.run_cycle("напиши привет", api=api)
+        self.assertTrue(tt.called, "с флагом эмуляция выполняется сразу")
+        self.assertFalse(self.autonomy.has_pending_confirm())
+
+    def test_agentic_loop_handles_error_and_recovers(self):
+        """Agentic loop: шаг 1 ok, шаг 2 ошибка, шаг 3 исправление, done."""
+        from unittest.mock import MagicMock, patch
+        from core import task_runner
+        self.autonomy.set_emulation(True)
+        api = MagicMock(enabled=True)
+        api.ask.side_effect = [
+            # Шаг 1: создаём файл
+            '{"thought":"создам файл","tool":"write_file","arg":"test.py","content":"print(1"}',
+            # Шаг 2: запускаем — упадёт (синтаксическая ошибка)
+            '{"thought":"запустим","tool":"run_command","arg":"python3 test.py"}',
+            # Шаг 3: исправляем через apply_patch
+            '{"thought":"исправлю скобку","tool":"apply_patch",'
+            '"arg":"test.py","old":"print(1","new":"print(1)"}',
+            # Шаг 4: перезапускаем
+            '{"thought":"перезапустим","tool":"run_command","arg":"python3 test.py"}',
+            # done
+            '{"done":true,"summary":"скрипт работает"}',
+        ]
+        with patch("core.agent_tools.write_file_safe",
+                   return_value={"ok": True, "file": "test.py", "size": 8}), \
+             patch("core.agent_tools.run_command_safe") as rcs, \
+             patch("core.agent_tools.apply_patch_safe") as aps:
+            rcs.side_effect = [
+                {"ok": False, "stderr": "SyntaxError: '(' was never closed",
+                 "code": 1},   # шаг 2 падает
+                {"ok": True, "stdout": "1\n", "code": 0},   # шаг 4 ok
+            ]
+            aps.return_value = {"ok": True, "file": "test.py", "replaced": 1}
+            summary = task_runner.run_cycle("создай скрипт и запусти", api=api)
+        self.assertTrue(summary["done"])
+        self.assertEqual(summary["iterations"], 5)  # 4 шага + done на 5-й итерации
+        self.assertGreaterEqual(rcs.call_count, 2, "run_command вызывался минимум 2 раза")
+        self.assertTrue(aps.called, "apply_patch вызывался для исправления")
 
     def test_read_file_refuses_outside_project(self):
         from core import agent_tools
@@ -1368,6 +1450,44 @@ class TestParseGoalTools(IsolatedAutonomy, unittest.TestCase):
             res = agent_tools.open_app_safe("steam")
         oa.assert_called_once_with("steam")
         self.assertTrue(res["ok"])
+
+    def test_read_file_safe_rejects_dangerous_paths(self):
+        """read_file_safe: пустые пути, выход наружу, каталоги и симлинк-побег отклоняются."""
+        from core import agent_tools
+        bad_paths = (
+            "", "   ", "/etc/passwd", "/etc/shadow", "/root/.ssh/id_rsa",
+            "..", "../..", "../../../etc/passwd", "core/../../..",
+        )
+        for bad in bad_paths:
+            res = agent_tools.read_file_safe(bad)
+            self.assertFalse(res["ok"], f"опасный путь не отклонён: {bad!r}")
+        # Каталог внутри проекта — не файл, читать нельзя.
+        self.assertFalse(agent_tools.read_file_safe("core")["ok"])
+        # Симлинк внутри проекта, ведущий наружу, тоже не читается.
+        link = PROJECT_ROOT / "_test_escape_link"
+        try:
+            link.symlink_to("/etc/passwd")
+        except OSError:
+            return  # нет прав на симлинк — остальные проверки уже прошли
+        try:
+            self.assertFalse(agent_tools.read_file_safe("_test_escape_link")["ok"])
+        finally:
+            link.unlink(missing_ok=True)
+
+    def test_open_app_safe_rejects_dangerous_names(self):
+        """open_app_safe: команды, пути и лишние аргументы не проходят белый список."""
+        from unittest.mock import patch
+        from core import agent_tools
+        bad_names = (
+            "", "   ", "/bin/sh", "/usr/bin/env", "../../bin/bash",
+            "rm -rf /", "steam; rm -rf /", "steam && rm -rf /",
+            "firefox --headless", "bash -c id", "sudo", "sh",
+        )
+        for bad in bad_names:
+            with patch("core.tools.open_app") as oa:
+                res = agent_tools.open_app_safe(bad)
+            self.assertFalse(res["ok"], f"опасное приложение не отклонено: {bad!r}")
+            self.assertFalse(oa.called, f"open_app вызван для опасного имени: {bad!r}")
 
 
 class TestVersion1201(unittest.TestCase):

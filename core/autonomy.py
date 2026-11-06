@@ -68,7 +68,11 @@ def load_state() -> dict:
 def save_state(state: dict) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with _lock:
-        atomic_write_json(str(SCHEDULE_FILE), state)
+        # Атомарно: загружаем актуальное состояние, сливаем и пишем.
+        # Так цепочка/очередь не теряются при конкурентных вызовах из разных потоков.
+        current = load_state()
+        current.update(state)
+        atomic_write_json(str(SCHEDULE_FILE), current)
 
 
 def is_enabled() -> bool:
@@ -114,6 +118,7 @@ def run_task(goal: str | None = None, api=None) -> dict | None:
     """
     Точка входа Task Runner. Берёт задачу из очереди (или goal), выполняет по шагам.
     Работает только при включённой автономности. Возвращает сводку или None.
+    Эмуляционные шаги (type_text, click_at, press_key) ставятся на паузу и ждут «да».
     """
     if not is_enabled():
         return None
@@ -128,7 +133,7 @@ def run_task(goal: str | None = None, api=None) -> dict | None:
         save_state(state)
     from core import task_runner
     try:
-        summary = task_runner.run_task(goal, api=api)
+        summary = task_runner.run_cycle(goal, api=api)
     except Exception as e:
         _log.error("задача упала: %r", e)
         summary = {"goal": goal, "steps": 0, "ok": 0, "error": repr(e)}
@@ -136,9 +141,14 @@ def run_task(goal: str | None = None, api=None) -> dict | None:
         state = load_state()
         for q in state.get("queue", []):
             if q.get("goal") == goal and q.get("status") == "running":
-                q["status"] = "done" if summary.get("ok") else "failed"
+                # Если задача ждёт подтверждения — не помечаем как failed
+                if summary.get("pending"):
+                    q["status"] = "awaiting_confirm"
+                else:
+                    q["status"] = "done" if summary.get("ok") else "failed"
         save_state(state)
-    _journal(f"задача выполнена: {goal[:80]} — шагов ok {summary.get('ok', 0)}/{summary.get('steps', 0)}")
+    _journal(f"задача выполнена: {goal[:80]} — шагов ok {summary.get('ok', 0)}/{summary.get('steps', 0)}"
+             + (" (ожидает подтверждения)" if summary.get("pending") else ""))
     return summary
 
 
@@ -249,9 +259,6 @@ DANGEROUS_ACTIONS = {
     "delete_outside_project": "удалить файлы вне папки проекта",
     "send_external": "отправить сообщение наружу",
     "sleep_pc": "усыпить ПК",
-    "click_at": "кликнуть мышью по экрану",
-    "type_text": "напечатать текст",
-    "press_key": "нажать клавишу",
 }
 
 
@@ -280,7 +287,7 @@ def sleep_pc() -> str:
 # Разрешённые приложения для launch_app. Совпадают с ключами словаря apps в core/tools.open_app.
 ALLOWED_APPS = (
     "steam", "firefox", "браузер", "chrome", "код", "vscode",
-    "терминал", "telegram", "discord", "spotify", "vlc",
+    "терминал", "блокнот", "telegram", "discord", "spotify", "vlc",
 )
 
 
@@ -302,9 +309,10 @@ def request_dangerous_action(action: str, arg: str = "") -> dict:
     """
     if action not in DANGEROUS_ACTIONS:
         return {"needs_confirm": False, "action": action}
-    _pending_confirm.clear()
-    _pending_confirm["action"] = action
-    _pending_confirm["arg"] = arg
+    with _lock:
+        _pending_confirm.clear()
+        _pending_confirm["action"] = action
+        _pending_confirm["arg"] = arg
     _journal(f"ЗАПРОС ПОДТВЕРЖДЕНИЯ: {action} {arg}".rstrip())
     what = DANGEROUS_ACTIONS[action] + (f" «{arg}»" if arg else "")
     return {
@@ -316,7 +324,20 @@ def request_dangerous_action(action: str, arg: str = "") -> dict:
 
 
 def has_pending_confirm() -> bool:
-    return "action" in _pending_confirm
+    with _lock:
+        return "action" in _pending_confirm
+
+
+def get_pending_question() -> str | None:
+    """Возвращает текст вопроса для GUI или None, если ожидания нет."""
+    with _lock:
+        action = _pending_confirm.get("action")
+        arg = _pending_confirm.get("arg", "")
+    if action is None:
+        return None
+    what = DANGEROUS_ACTIONS.get(action, action)
+    what += (f" «{arg}»" if arg else "")
+    return f"⚠️ Создатель, я хочу выполнить: {what}. Подтверждаешь? Напиши «да» или «нет»."
 
 
 def resolve_confirm(answer: str) -> str | None:
@@ -325,10 +346,11 @@ def resolve_confirm(answer: str) -> str | None:
     Возвращает текст ответа Фитца или None, если ожидания нет.
     Действие выполняется ТОЛЬКО после явного «да».
     """
-    if not has_pending_confirm():
-        return None
-    action = _pending_confirm.pop("action")
-    arg = _pending_confirm.pop("arg", "")
+    with _lock:
+        if "action" not in _pending_confirm:
+            return None
+        action = _pending_confirm.pop("action")
+        arg = _pending_confirm.pop("arg", "")
     low = answer.lower().strip()
     if low in ("да", "подтверждаю", "yes", "ок", "давай"):
         _journal(f"ПОДТВЕРЖДЕНО: {action} {arg}".rstrip())
@@ -399,9 +421,7 @@ def execute_confirmed(action: str, arg: str = "") -> str:
 # Хранится в data/autonomy.json (ключ "chain"), чтобы пережить перезапуск.
 # ----------------------------------------------------------------------
 def save_chain(steps: list) -> None:
-    state = load_state()
-    state["chain"] = list(steps)
-    save_state(state)
+    save_state({"chain": list(steps)})
     _journal(f"ЦЕПОЧКА сохранена: {len(steps)} шагов ждут продолжения")
 
 
@@ -412,5 +432,15 @@ def load_chain() -> list:
 def clear_chain() -> None:
     state = load_state()
     if state.get("chain"):
-        state["chain"] = []
-        save_state(state)
+        save_state({"chain": []})
+        _journal("ЦЕПОЧКА очищена")
+
+
+def cancel_tasks() -> str:
+    """
+    Команда «отмени задачу»: снимает остаток цепочки и всю очередь задач.
+    Само действие не выполняется — только отмена запланированного.
+    """
+    save_state({"chain": [], "queue": []})
+    _journal("ОТМЕНА: цепочка и очередь очищены")
+    return "Задача отменена."

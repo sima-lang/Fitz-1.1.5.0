@@ -71,6 +71,19 @@ def extract_emotion(text: str):
     return None
 
 
+def _load_setting(key: str, default: str) -> str:
+    """Читает настройку из data/settings.json (с кэшем в default)."""
+    try:
+        from pathlib import Path
+        p = Path(__file__).parent.parent / "data" / "settings.json"
+        if p.exists():
+            with open(p, "r", encoding="utf-8") as fh:
+                return json.load(fh).get(key, default)
+    except Exception:
+        pass
+    return default
+
+
 class Brain:
     def __init__(self, path: str = "data/brain.json"):
         self.path = path
@@ -87,6 +100,7 @@ class Brain:
         self.app = None
 
         self.api = None
+        self._chat_model = _load_setting("chat_model", "deepseek/deepseek-v4.1-flash")
         if API is not None:
             try:
                 self.api = API()
@@ -530,9 +544,11 @@ class Brain:
         last_err = None
         for i in range(attempts):
             try:
-                resp = self.api.ask(enriched, context=ctx, max_tokens=max_tokens)
+                resp = self.api.ask(enriched, context=ctx, max_tokens=max_tokens,
+                                model=self._chat_model)
                 if resp and resp.strip():
-                    if "⚠️" in resp or "Ошибка" in resp:
+                    # Любой маркер ошибки — переспрашиваем, не кэшируем и не отдаём пользователю
+                    if any(m in resp for m in ("⚠️", "Ошибка", "⏳", "Я не понял")):
                         self._log(f"попытка {i+1}: API вернул ошибку: {resp[:120]!r}")
                         last_err = resp
                         time.sleep(0.8 * (i + 1))
@@ -633,7 +649,7 @@ class Brain:
         )
         response = None  # Инициализация ДО try, чтобы except видел переменную
         try:
-            response = self.api.ask(prompt, max_tokens=200)
+            response = self.api.ask(prompt, max_tokens=200, model=self._chat_model)
             self._log(f"ask_action: {response!r}")
             match = re.search(r'\{.*\}', response, re.DOTALL)
             if match:
@@ -704,7 +720,7 @@ class Brain:
             "НЕ добавляй комментарии, ТОЛЬКО JSON."
         )
         try:
-            raw = self.api.ask(prompt, max_tokens=500)
+            raw = self.api.ask(prompt, max_tokens=500, model=self._chat_model)
             self._log(f"senior_act raw: {raw!r}")
             if not raw:
                 # API молчит — отдаём саркастичный локальный fallback

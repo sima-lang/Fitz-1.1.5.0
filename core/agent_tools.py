@@ -7,7 +7,12 @@ core/agent_tools.py — инструменты автономного агент
 - Пути разрешаются через resolve(); симлинки и выход за пределы разрешённых папок отклоняются.
 """
 import json
+import os as _os
 import re
+import shlex
+import shutil
+import subprocess
+import time as _time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote, urlparse, parse_qs
@@ -140,10 +145,30 @@ def write_plan(text: str, title: str = "plan") -> dict:
 # ----------------------------------------------------------------------
 # 4. Эмуляция ввода (через core/tools, ydotool). Работает ТОЛЬКО при флаге emulation_enabled.
 # ----------------------------------------------------------------------
+def _focus_editor_window() -> None:
+    """Переключает фокус на окно редактора через клик в центр экрана (ydotool).
+    wmctrl не работает на Wayland — вместо этого кликаем мышью в центр,
+    что переводит фокус на открывшееся окно (блокнот/gedit)."""
+    # Проверяем, работает ли ydotool (нужен демон ydotoold)
+    if not shutil.which("ydotool"):
+        _log.info("ydotool не найден — пропускаю фокусировку")
+        return
+    _log.info("фокус: клик ydotool в центр экрана")
+    try:
+        subprocess.run(["ydotool", "mousemove", "960", "540"], capture_output=True, timeout=3)
+        _time.sleep(0.15)
+        subprocess.run(["ydotool", "click", "1"], capture_output=True, timeout=3)
+        _time.sleep(0.5)  # даём оконному менеджеру время на переключение фокуса
+        _log.info("фокус: клик выполнен")
+    except Exception as e:
+        _log.info("фокус: ошибка ydotool — %s", e)
+
+
 def emulate(action: str, arg: str) -> dict:
     """
     Выполняет эмуляцию ввода. Проверка флага — здесь, до любого вызова ydotool.
     action: click_at (arg = "x,y"), type_text (arg = текст), press_key (arg = клавиша).
+    Перед type_text окно редактора выводится на передний план через wmctrl.
     """
     from core import autonomy
     if not autonomy.is_emulation_enabled():
@@ -154,6 +179,7 @@ def emulate(action: str, arg: str) -> dict:
             x, y = (v.strip() for v in arg.split(","))
             res = tools.click_at(x, y)
         elif action == "type_text":
+            _focus_editor_window()
             res = tools.type_text(arg)
         elif action == "press_key":
             res = tools.press_key(arg)
@@ -201,3 +227,134 @@ def open_app_safe(name: str) -> dict:
     from core import tools
     res = str(tools.open_app(name))
     return {"ok": not res.startswith("⚠️"), "result": res}
+
+
+# ----------------------------------------------------------------------
+# 7. Запуск команд агентом (CLI-агент)
+# ----------------------------------------------------------------------
+_AGENT_SAFE_CMDS = frozenset({
+    # Утилиты
+    "ls", "pwd", "echo", "cat", "grep", "whoami", "date", "uptime",
+    "uname", "df", "du", "head", "tail", "wc", "sort", "uniq", "cut", "tr",
+    # Файлы
+    "mkdir", "touch", "cp", "mv", "ln", "basename", "dirname", "realpath",
+    "chmod", "test", "env",
+    # Сборка и языки
+    "python3", "python", "pytest", "pip", "pip3",
+    "node", "npm", "npx",
+    "git", "make", "cmake", "find", "xargs",
+})
+
+
+def run_command_safe(cmd: str) -> dict:
+    """Выполняет безопасную команду из расширенного белого списка. Без shell.
+    Возвращает {"ok": bool, "stdout": ..., "stderr": ..., "code": int}."""
+    if not cmd or not cmd.strip():
+        return {"ok": False, "error": "пустая команда"}
+    try:
+        argv = shlex.split(cmd.strip())
+    except ValueError as e:
+        return {"ok": False, "error": f"некорректная команда: {e}"}
+    if not argv:
+        return {"ok": False, "error": "пустая команда"}
+    if argv[0] not in _AGENT_SAFE_CMDS:
+        return {"ok": False, "error": f"команда '{argv[0]}' не в белом списке агента"}
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT))
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "команда выполнялась >30 сек"}
+    except FileNotFoundError:
+        return {"ok": False, "error": f"программа '{argv[0]}' не найдена"}
+    except Exception as e:
+        return {"ok": False, "error": repr(e)}
+    return {
+        "ok": r.returncode == 0,
+        "stdout": r.stdout.strip()[:5000],
+        "stderr": r.stderr.strip()[:2000],
+        "code": r.returncode,
+    }
+
+
+# ----------------------------------------------------------------------
+# 8. Запись файла агентом: создаёт папки, пишет в корень проекта
+# ----------------------------------------------------------------------
+def write_file_safe(path: str, content: str = "") -> dict:
+    """Записывает файл. Путь — относительно корня проекта. os.makedirs — авто.
+    Возвращает {"ok": bool, "file": ..., "size": int}."""
+    if not path or not path.strip():
+        return {"ok": False, "error": "пустой путь"}
+    path = path.strip().strip('"').strip("'")
+    try:
+        target = (PROJECT_ROOT / path).resolve()
+    except (OSError, RuntimeError):
+        return {"ok": False, "error": "неверный путь"}
+    # Защита: не даём выйти за PROJECT_ROOT
+    if PROJECT_ROOT not in (target,) and PROJECT_ROOT not in target.parents:
+        return {"ok": False, "error": "путь вне проекта"}
+    try:
+        _os.makedirs(target.parent, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+    except Exception as e:
+        return {"ok": False, "error": f"ошибка записи: {e}"}
+    _log.info("записан файл: %s (%d байт)", target, len(content))
+    return {"ok": True, "file": str(target), "size": len(content)}
+
+
+# ----------------------------------------------------------------------
+# 9. apply_patch — точечное изменение файла (old_string → new_string)
+# ----------------------------------------------------------------------
+def apply_patch_safe(path: str, old: str, new: str) -> dict:
+    """Заменяет old_string на new_string в файле. Без перезаписи всего файла.
+    Возвращает {"ok": bool, "file": ..., "replaced": int}."""
+    if not path or not path.strip():
+        return {"ok": False, "error": "пустой путь"}
+    if not old:
+        return {"ok": False, "error": "пустой old_string"}
+    path = path.strip().strip('"').strip("'")
+    try:
+        target = (PROJECT_ROOT / path).resolve()
+    except (OSError, RuntimeError):
+        return {"ok": False, "error": "неверный путь"}
+    if PROJECT_ROOT not in (target,) and PROJECT_ROOT not in target.parents:
+        return {"ok": False, "error": "путь вне проекта"}
+    if not target.exists():
+        return {"ok": False, "error": f"файл не найден: {path}"}
+    try:
+        content = target.read_text(encoding="utf-8")
+    except Exception as e:
+        return {"ok": False, "error": f"ошибка чтения: {e}"}
+    count = content.count(old)
+    if count == 0:
+        return {"ok": False, "error": f"old_string не найден в {path} (проверь точное совпадение)"}
+    new_content = content.replace(old, new)
+    try:
+        target.write_text(new_content, encoding="utf-8")
+    except Exception as e:
+        return {"ok": False, "error": f"ошибка записи: {e}"}
+    _log.info("apply_patch %s: %d замен", target, count)
+    return {"ok": True, "file": str(target), "replaced": count}
+
+
+# ----------------------------------------------------------------------
+# 10. search_code — grep по проекту
+# ----------------------------------------------------------------------
+def search_code(query: str) -> dict:
+    """Ищет query через grep -rnI в корне проекта. Только .py, .md, .txt, .json, .toml, .cfg.
+    Возвращает {"ok": bool, "matches": [...], "count": int}."""
+    if not query or not query.strip():
+        return {"ok": False, "error": "пустой запрос"}
+    try:
+        r = subprocess.run(
+            ["grep", "-rnI", "--include=*.py", "--include=*.md", "--include=*.txt",
+             "--include=*.json", "--include=*.toml", "--include=*.cfg",
+             query.strip(), "."],
+            capture_output=True, text=True, timeout=10, cwd=str(PROJECT_ROOT))
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "поиск занял >10 сек"}
+    except FileNotFoundError:
+        return {"ok": False, "error": "grep не найден"}
+    except Exception as e:
+        return {"ok": False, "error": repr(e)}
+    lines = r.stdout.strip().split("\n") if r.stdout.strip() else []
+    _log.info("search_code «%s»: %d совпадений", query, len(lines))
+    return {"ok": True, "matches": lines[:50], "count": len(lines)}

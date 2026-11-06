@@ -1,16 +1,19 @@
 """
 commands/autonomy_cmd.py — команды управления автономным режимом (этап 3).
 
-Тонкая обёртка над core.autonomy.handle_stop_command: «стоп автономность»,
-«включи автономность». Логика остановки живёт в core/autonomy.py.
+Тонкая обёртка над core.autonomy: «стоп автономность», «включи автономность»,
+«отмени задачу». Логика живёт в core/autonomy.py.
 """
 from core import autonomy
 
 _TASK_PREFIXES = ("задача на ночь:", "задача на ночь ", "задача:")
+_CANCEL_PHRASES = ("отмени задачу", "отменить задачу", "отмена задачи")
 
 
 def handle(text, memory, core):
     low = text.lower().strip()
+    if low in _CANCEL_PHRASES:
+        return autonomy.cancel_tasks()
     if low in ("включи эмуляцию", "выключи эмуляцию"):
         on = low.startswith("включи")
         autonomy.set_emulation(on)

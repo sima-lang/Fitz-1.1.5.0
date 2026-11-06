@@ -24,6 +24,8 @@ DEFAULT_SETTINGS = {
     "api_key": "",
     "api_url": "https://api.provod.ai/v1",
     "api_model": "deepseek/deepseek-v4-flash",
+    "chat_model": "deepseek/deepseek-v4.1-flash",
+    "code_model": "anthropic/claude-haiku-5.5",
     "api_timeout": 60,
     "theme": "cyberpunk",
     "accent_color": "#00d4ff",
@@ -465,6 +467,42 @@ class SettingsDialog(QDialog):
         self.api_model_combo.setEditable(True)
         layout.addRow("Модель:", self.api_model_combo)
 
+        # ---- Модель для чата ----
+        self.chat_model_combo = QComboBox()
+        self.chat_model_combo.addItems([
+            "deepseek/deepseek-v4.1-flash",
+            "deepseek/deepseek-v4-pro",
+            "deepseek/deepseek-v4-flash",
+            "anthropic/claude-haiku-5.5",
+            "grok-4-flash",
+        ])
+        current = self.settings.get("chat_model", "deepseek/deepseek-v4.1-flash")
+        idx = self.chat_model_combo.findText(current)
+        if idx >= 0:
+            self.chat_model_combo.setCurrentIndex(idx)
+        else:
+            self.chat_model_combo.setEditText(current)
+        self.chat_model_combo.setEditable(True)
+        layout.addRow("Модель для чата:", self.chat_model_combo)
+
+        # ---- Модель для кода/автономности ----
+        self.code_model_combo = QComboBox()
+        self.code_model_combo.addItems([
+            "anthropic/claude-haiku-5.5",
+            "deepseek/deepseek-v4-pro",
+            "deepseek/deepseek-v4-flash",
+            "anthropic/claude-sonnet-4.5",
+            "grok-4-flash",
+        ])
+        current = self.settings.get("code_model", "anthropic/claude-haiku-5.5")
+        idx = self.code_model_combo.findText(current)
+        if idx >= 0:
+            self.code_model_combo.setCurrentIndex(idx)
+        else:
+            self.code_model_combo.setEditText(current)
+        self.code_model_combo.setEditable(True)
+        layout.addRow("Модель для кода:", self.code_model_combo)
+
         self.api_timeout_spin = QSpinBox()
         self.api_timeout_spin.setRange(30, 300)
         self.api_timeout_spin.setSuffix(" сек")
@@ -558,6 +596,8 @@ class SettingsDialog(QDialog):
         s["api_key"] = self.api_key_input.text()
         s["api_url"] = self.api_url_input.text()
         s["api_model"] = self.api_model_combo.currentText()
+        s["chat_model"] = self.chat_model_combo.currentText()
+        s["code_model"] = self.code_model_combo.currentText()
         s["api_timeout"] = self.api_timeout_spin.value()
         s["check_api_on_start"] = self.check_api_check.isChecked()
 
